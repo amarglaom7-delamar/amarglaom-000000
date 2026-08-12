@@ -1,0 +1,30 @@
+# MiniWave Browser
+
+تطبيق متصفح أندرويد مبني باستخدام Expo وReact Native.
+
+## التشغيل
+
+1. ثبّت Node.js 20 أو أحدث وpnpm.
+2. من داخل مجلد المشروع شغّل:
+
+   ```bash
+   pnpm install
+   pnpm run typecheck
+   pnpm run dev
+   ```
+
+3. افتح الرابط الذي يظهر في Expo أو امسح رمز QR باستخدام Expo Go.
+
+## فحص Android
+
+يمكن التحقق من تجميع نسخة Android بدون إنشاء APK عبر:
+
+```bash
+pnpm exec expo export --platform android
+```
+
+## ملاحظات
+
+- يتطلب ماسح QR إذن الكاميرا.
+- التنزيلات والمفضلة والسجل تحفظ محليًا داخل التطبيق.
+- لا يوجد اتصال بخادم خارجي مطلوب لتشغيل واجهة المتصفح.
