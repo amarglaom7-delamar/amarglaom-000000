@@ -29,6 +29,7 @@ import themeColors from '@/constants/colors';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 type Language = 'ar' | 'en';
+type SearchEngine = 'google' | 'bing' | 'duckduckgo';
 type LibraryTab = 'history' | 'bookmarks' | 'downloads';
 type BrowserTab = {
   id: string;
@@ -53,6 +54,7 @@ type DownloadEntry = {
 type Settings = {
   theme: ThemeMode;
   language: Language;
+  searchEngine: SearchEngine;
   privateDefault: boolean;
   dataSaver: boolean;
   blockTrackers: boolean;
@@ -60,7 +62,18 @@ type Settings = {
 };
 type MediaCandidate = { url: string; label: string };
 
-const HOME_URL = 'https://duckduckgo.com/';
+const DEFAULT_SEARCH_ENGINE: SearchEngine = 'google';
+const HOME_URL = 'https://www.google.com/';
+const SEARCH_ENGINE_OPTIONS: Array<{ id: SearchEngine; label: string }> = [
+  { id: 'google', label: 'Google' },
+  { id: 'bing', label: 'Bing' },
+  { id: 'duckduckgo', label: 'DuckDuckGo' },
+];
+const SEARCH_URLS: Record<SearchEngine, string> = {
+  google: 'https://www.google.com/search?q=',
+  bing: 'https://www.bing.com/search?q=',
+  duckduckgo: 'https://duckduckgo.com/?q=',
+};
 const STORAGE = {
   history: '@miniwave/history',
   bookmarks: '@miniwave/bookmarks',
@@ -71,6 +84,7 @@ const STORAGE = {
 const defaultSettings: Settings = {
   theme: 'auto',
   language: 'ar',
+  searchEngine: DEFAULT_SEARCH_ENGINE,
   privateDefault: false,
   dataSaver: false,
   blockTrackers: false,
@@ -92,6 +106,7 @@ const t = {
   ar: {
     home: 'الرئيسية',
     search: 'ابحث أو اكتب عنوان موقع',
+    searchEngine: 'محرك البحث',
     tabs: 'التبويبات',
     history: 'السجل',
     bookmarks: 'المفضلة',
@@ -152,6 +167,7 @@ const t = {
   en: {
     home: 'Home',
     search: 'Search or enter website',
+    searchEngine: 'Search engine',
     tabs: 'Tabs',
     history: 'History',
     bookmarks: 'Bookmarks',
@@ -215,12 +231,21 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function normalizeInput(input: string) {
+function buildSearchUrl(query: string, searchEngine: SearchEngine) {
+  return `${SEARCH_URLS[searchEngine]}${encodeURIComponent(query.trim())}`;
+}
+
+function normalizeInput(input: string, searchEngine: SearchEngine = DEFAULT_SEARCH_ENGINE) {
   const value = input.trim();
   if (!value) return '';
   if (/^(https?|file|about):\/\//i.test(value)) return value;
-  if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value)) return `https://${value}`;
-  return `https://duckduckgo.com/?q=${encodeURIComponent(value)}`;
+  if (/^(localhost|127(?:\.\d{1,3}){3})(:\d{1,5})?(\/.*)?$/i.test(value)) return `http://${value}`;
+  if (/^(?:www\.)?[\w-]+(?:\.[\w-]+)+(?::\d{1,5})?(?:\/.*)?$/i.test(value)) return `https://${value}`;
+  return buildSearchUrl(value, searchEngine);
+}
+
+function getSearchEngineLabel(searchEngine: SearchEngine) {
+  return SEARCH_ENGINE_OPTIONS.find((option) => option.id === searchEngine)?.label ?? 'Google';
 }
 
 function fileNameFromUrl(url: string) {
@@ -276,7 +301,7 @@ export default function MiniWaveBrowser() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [hydrated, setHydrated] = useState(false);
   const [tabs, setTabs] = useState<BrowserTab[]>([
-    { id: makeId('tab'), url: HOME_URL, title: 'DuckDuckGo', private: false, canGoBack: false, canGoForward: false, loading: true },
+    { id: makeId('tab'), url: HOME_URL, title: 'Google', private: false, canGoBack: false, canGoForward: false, loading: true },
   ]);
   const [activeTabId, setActiveTabId] = useState('');
   const [address, setAddress] = useState(HOME_URL);
@@ -352,7 +377,7 @@ export default function MiniWaveBrowser() {
   }, []);
 
   const openUrl = useCallback((input: string, tabId = activeTabId) => {
-    const url = normalizeInput(input);
+    const url = normalizeInput(input, settings.searchEngine);
     if (!url) {
       setNotice(lang.invalidUrl);
       return;
@@ -365,7 +390,7 @@ export default function MiniWaveBrowser() {
       setTab(tabId, { url, loading: true, canGoBack: false, canGoForward: false });
       setWebKeys((current) => ({ ...current, [tabId]: (current[tabId] ?? 0) + 1 }));
     }
-  }, [activeTabId, lang.invalidUrl, setTab]);
+  }, [activeTabId, lang.invalidUrl, setTab, settings.searchEngine]);
 
   const addHistory = useCallback((navigation: WebViewNavigation, privateTab: boolean) => {
     if (privateTab || !navigation.url || navigation.url.startsWith('about:blank')) return;
@@ -682,7 +707,7 @@ export default function MiniWaveBrowser() {
               onChangeText={setAddress}
               onFocus={() => setEditingAddress(true)}
               onBlur={() => setEditingAddress(false)}
-              onSubmitEditing={() => openUrl(address)}
+              onSubmitEditing={(event) => openUrl(event.nativeEvent.text || address)}
               placeholder={lang.search}
               placeholderTextColor={displayColors.mutedForeground}
               style={[styles.addressInput, { color: displayColors.foreground, textAlign }]}
@@ -775,6 +800,7 @@ export default function MiniWaveBrowser() {
               <Text style={[styles.settingSection, { color: displayColors.primary, textAlign }]}>{lang.appearance}</Text>
               <SettingRow icon="contrast-outline" title={lang.appearance} detail={`${lang.auto} · ${lang.light} · ${lang.dark}`} colors={displayColors} trailing={<View style={[styles.modeRow, { flexDirection: rowDirection }]}>{(['auto', 'light', 'dark'] as ThemeMode[]).map((mode) => <Pressable key={mode} onPress={() => setSettings((current) => ({ ...current, theme: mode }))} style={[styles.modePill, settings.theme === mode && { backgroundColor: displayColors.primary }]}><Text style={[styles.modeText, { color: settings.theme === mode ? displayColors.primaryForeground : displayColors.mutedForeground }]}>{mode === 'auto' ? lang.auto : mode === 'light' ? lang.light : lang.dark}</Text></Pressable>)}</View>} />
               <SettingRow icon="language-outline" title={lang.language} detail={settings.language === 'ar' ? 'العربية' : 'English'} colors={displayColors} trailing={<Switch value={settings.language === 'en'} onValueChange={(value) => setSettings((current) => ({ ...current, language: value ? 'en' : 'ar' }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
+               <SettingRow icon="search-outline" title={lang.searchEngine} detail={getSearchEngineLabel(settings.searchEngine)} colors={displayColors} trailing={<View style={[styles.modeRow, { flexDirection: rowDirection }]}>{SEARCH_ENGINE_OPTIONS.map((option) => <Pressable key={option.id} onPress={() => setSettings((current) => ({ ...current, searchEngine: option.id }))} style={[styles.modePill, settings.searchEngine === option.id && { backgroundColor: displayColors.primary }]}><Text style={[styles.modeText, { color: settings.searchEngine === option.id ? displayColors.primaryForeground : displayColors.mutedForeground }]}>{option.label}</Text></Pressable>)}</View>} />
               <Text style={[styles.settingSection, { color: displayColors.primary, textAlign }]}>{lang.settings}</Text>
               <SettingRow icon="speedometer-outline" title={lang.dataSaver} detail={lang.dataSaverDetail} colors={displayColors} trailing={<Switch value={settings.dataSaver} onValueChange={(value) => setSettings((current) => ({ ...current, dataSaver: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <SettingRow icon="shield-checkmark-outline" title={lang.adBlock} detail={lang.adBlockDetail} colors={displayColors} trailing={<Switch value={settings.blockTrackers} onValueChange={(value) => setSettings((current) => ({ ...current, blockTrackers: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
