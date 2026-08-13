@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "MiniWave Browser",
+    "name": "عمار جلعوم",
     "slug": "mini-wave-browser",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -38,7 +38,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow MiniWave Browser to scan QR codes."
+          "cameraPermission": "السماح لتطبيق عمار جلعوم بمسح رموز QR."
         }
       ],
       [
