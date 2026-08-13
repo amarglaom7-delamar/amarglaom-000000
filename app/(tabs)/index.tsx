@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   ActivityIndicator,
+  BackHandler,
   Keyboard,
   Modal,
   Platform,
@@ -378,6 +379,39 @@ export default function MiniWaveBrowser() {
     setDownloadOptions(null);
     setMediaTabId(activeTabId);
   }, [activeTabId]);
+
+  useEffect(() => {
+    const handleHardwareBack = () => {
+      if (downloadOptions) {
+        setDownloadOptions(null);
+        return true;
+      }
+      if (qrOpen) {
+        setQrOpen(false);
+        return true;
+      }
+      if (tabsOpen) {
+        setTabsOpen(false);
+        return true;
+      }
+      if (settingsOpen) {
+        setSettingsOpen(false);
+        return true;
+      }
+      if (libraryOpen) {
+        setLibraryOpen(false);
+        return true;
+      }
+      if (activeTab?.canGoBack) {
+        webRefs.current[activeTab.id]?.goBack();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
+    return () => subscription.remove();
+  }, [activeTab, downloadOptions, libraryOpen, qrOpen, settingsOpen, tabsOpen]);
 
   const setTab = useCallback((id: string, patch: Partial<BrowserTab>) => {
     setTabs((current) => current.map((tab) => (tab.id === id ? { ...tab, ...patch } : tab)));
