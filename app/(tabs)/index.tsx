@@ -476,7 +476,11 @@ export default function MiniWaveBrowser() {
     }
     const id = makeId('download');
     const name = (suggestedName || fileNameFromUrl(url)).replace(/[^\w.-]+/g, '_');
-    const target = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? ''}${name || `${id}.bin`}`;
+    const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '';
+    const extensionMatch = name.match(/(\.[a-z0-9]{2,5})$/i);
+    const extension = extensionMatch?.[1] ?? '.mp4';
+    const nameWithoutExtension = extensionMatch ? name.slice(0, -extension.length) : name;
+    const target = `${directory}${nameWithoutExtension || `miniwave-video-${id}`}-${Date.now()}${extension}`;
     const entry: DownloadEntry = { id, url, name, progress: 0, status: 'downloading' };
     setDownloads((current) => [entry, ...current]);
     setDownloadOptions(null);
@@ -494,6 +498,11 @@ export default function MiniWaveBrowser() {
       downloadsRef.current[id] = resumable;
       const result = await resumable.downloadAsync();
       if (!result?.uri) throw new Error('The video file was not saved');
+      const contentType = Object.entries(result.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? '';
+      if (result.status >= 400 || /text\/html|application\/json/i.test(contentType)) {
+        await FileSystem.deleteAsync(result.uri, { idempotent: true });
+        throw new Error('The source returned a web page instead of a video file');
+      }
       setDownloads((current) => current.map((item) => item.id === id ? { ...item, progress: 100, status: 'done', localUri: result?.uri } : item));
       setNotice(lang.downloadDone);
       await notifyDownload(lang.downloadDone, name);
@@ -748,7 +757,7 @@ export default function MiniWaveBrowser() {
           </View>
         ) : null}
         {mediaTabId === activeTabId && mediaCandidates.length > 0 && (
-          <Pressable accessibilityRole="button" accessibilityLabel={lang.downloadVideo} onPress={() => setDownloadOptions(mediaCandidates)} style={[styles.mediaDownload, { backgroundColor: displayColors.accent }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={lang.downloadVideo} onPress={() => void startDownload(mediaCandidates[0].url, `video-${Date.now()}${fileNameFromUrl(mediaCandidates[0].url).match(/(\.[a-z0-9]{2,5})$/i)?.[1] ?? '.mp4'}`)} style={[styles.mediaDownload, { backgroundColor: displayColors.accent }]}>
             <Ionicons name="download-outline" size={18} color={displayColors.accentForeground} />
             <Text style={[styles.mediaDownloadText, { color: displayColors.accentForeground }]}>{lang.downloadVideo}</Text>
           </Pressable>
