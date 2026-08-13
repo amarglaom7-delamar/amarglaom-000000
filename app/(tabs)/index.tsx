@@ -60,7 +60,7 @@ type Settings = {
   blockTrackers: boolean;
   notifications: boolean;
 };
-type MediaCandidate = { url: string; label: string };
+type MediaCandidate = { url: string; label: string; isPlaying?: boolean };
 
 const DEFAULT_SEARCH_ENGINE: SearchEngine = 'google';
 const HOME_URL = 'https://www.google.com/';
@@ -316,6 +316,7 @@ export default function MiniWaveBrowser() {
   const [qrOpen, setQrOpen] = useState(false);
   const [downloadOptions, setDownloadOptions] = useState<MediaCandidate[] | null>(null);
   const [mediaCandidates, setMediaCandidates] = useState<MediaCandidate[]>([]);
+  const [mediaTabId, setMediaTabId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [webProgress, setWebProgress] = useState(0);
@@ -371,6 +372,12 @@ export default function MiniWaveBrowser() {
     const timer = setTimeout(() => setNotice(''), 2800);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    setMediaCandidates([]);
+    setDownloadOptions(null);
+    setMediaTabId(activeTabId);
+  }, [activeTabId]);
 
   const setTab = useCallback((id: string, patch: Partial<BrowserTab>) => {
     setTabs((current) => current.map((tab) => (tab.id === id ? { ...tab, ...patch } : tab)));
@@ -486,6 +493,7 @@ export default function MiniWaveBrowser() {
       );
       downloadsRef.current[id] = resumable;
       const result = await resumable.downloadAsync();
+      if (!result?.uri) throw new Error('The video file was not saved');
       setDownloads((current) => current.map((item) => item.id === id ? { ...item, progress: 100, status: 'done', localUri: result?.uri } : item));
       setNotice(lang.downloadDone);
       await notifyDownload(lang.downloadDone, name);
@@ -499,7 +507,8 @@ export default function MiniWaveBrowser() {
     }
   }, [lang.downloadDone, lang.downloadFailed, lang.downloadStarted, notifyDownload]);
 
-  const onWebMessage = useCallback((event: WebViewMessageEvent) => {
+  const onWebMessage = useCallback((event: WebViewMessageEvent, tabId: string) => {
+    if (tabId !== activeTabId) return;
     try {
       const message = JSON.parse(event.nativeEvent.data) as { type?: string; url?: string; title?: string; sources?: MediaCandidate[] };
       if (message.type === 'download' && message.url) void startDownload(message.url, message.title);
@@ -508,15 +517,14 @@ export default function MiniWaveBrowser() {
           .filter((item) => item.url && /^https?:\/\//i.test(item.url))
           .filter((item) => !/\.m3u8(?:$|\?)/i.test(item.url))
           .map((item) => ({ ...item, label: item.label || lang.downloadVideo }));
-        setMediaCandidates((current) => {
-          const next = [...sources, ...current];
-          return next.filter((item, index, all) => all.findIndex((candidate) => candidate.url === item.url) === index).slice(0, 8);
-        });
+        const unique = sources.filter((item, index, all) => all.findIndex((candidate) => candidate.url === item.url) === index).slice(0, 8);
+        setMediaTabId(tabId);
+        setMediaCandidates(unique);
       }
     } catch {
       // Ignore messages from pages that are not JSON.
     }
-  }, [lang.downloadVideo, startDownload]);
+  }, [activeTabId, lang.downloadVideo, startDownload]);
 
   const injectedJavaScript = useMemo(() => `
     (function() {
@@ -579,21 +587,24 @@ export default function MiniWaveBrowser() {
         var sources = [];
         videos.forEach(function(mediaElement) {
           addVideoDownloadButton(mediaElement);
+          if (mediaElement.paused || mediaElement.ended) return;
           var url = mediaElement.currentSrc || mediaElement.src;
-          if (usableMediaUrl(url)) sources.push({url:url, label: mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video')});
+          if (usableMediaUrl(url)) sources.push({url:url, label: mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video'), isPlaying:true});
           Array.prototype.slice.call(mediaElement.querySelectorAll('source')).forEach(function(source, index) {
             var sourceUrl = source.src;
-            if (usableMediaUrl(sourceUrl)) sources.push({url:sourceUrl, label: source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1))});
+            if (usableMediaUrl(sourceUrl)) sources.push({url:sourceUrl, label: source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1)), isPlaying:true});
           });
         });
         var unique = sources.filter(function(item, index, all) {
           return all.findIndex(function(candidate) { return candidate.url === item.url; }) === index;
         });
-        if (unique.length) send('media', {sources:unique});
+        send('media', {sources:unique});
       }
       document.addEventListener('click', function(event) {
         var node = event.target && event.target.closest ? event.target.closest('a') : null;
         if (node && (node.download || /\\.(pdf|zip|apk|png|jpe?g|gif|webp|mp4|webm|mov|mp3|m4a|wav|docx?|xlsx?)($|\\?)/i.test(node.href || ''))) {
+          event.preventDefault();
+          event.stopPropagation();
           send('download', {url: node.href, title: node.download || node.textContent || ''});
         }
       }, true);
@@ -632,7 +643,7 @@ export default function MiniWaveBrowser() {
         }}
         onError={() => { if (tab.id === activeTabId) setError(lang.errorPage); setTab(tab.id, { loading: false }); }}
         onHttpError={() => { if (tab.id === activeTabId) setError(lang.errorPage); }}
-        onMessage={onWebMessage}
+        onMessage={(event) => onWebMessage(event, tab.id)}
         onFileDownload={(event) => void startDownload(event.nativeEvent.downloadUrl)}
         onShouldStartLoadWithRequest={(request) => {
           if (settings.blockTrackers && isBlockedHost(request.url)) return false;
@@ -736,7 +747,7 @@ export default function MiniWaveBrowser() {
             </Pressable>
           </View>
         ) : null}
-        {mediaCandidates.length > 0 && (
+        {mediaTabId === activeTabId && mediaCandidates.length > 0 && (
           <Pressable accessibilityRole="button" accessibilityLabel={lang.downloadVideo} onPress={() => setDownloadOptions(mediaCandidates)} style={[styles.mediaDownload, { backgroundColor: displayColors.accent }]}>
             <Ionicons name="download-outline" size={18} color={displayColors.accentForeground} />
             <Text style={[styles.mediaDownloadText, { color: displayColors.accentForeground }]}>{lang.downloadVideo}</Text>
