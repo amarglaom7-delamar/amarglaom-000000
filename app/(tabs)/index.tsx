@@ -148,7 +148,7 @@ const t = {
     notificationDetail: 'إشعار محلي عند اكتمال الملف',
     privateDefault: 'فتح التبويبات الجديدة كخاصة',
     privateDetail: 'لا تحفظ السجل أو المفضلة في التصفح الخاص',
-    about: 'حول MiniWave',
+    about: 'حول عمار جلعوم',
     reset: 'إعادة ضبط البيانات',
     resetDetail: 'حذف السجل والمفضلة والتنزيلات',
     cancel: 'إلغاء',
@@ -209,7 +209,7 @@ const t = {
     notificationDetail: 'Show a local notification when files finish',
     privateDefault: 'Open new tabs privately',
     privateDetail: 'Private tabs do not save history or bookmarks',
-    about: 'About MiniWave',
+    about: 'About عمار جلعوم',
     reset: 'Reset data',
     resetDetail: 'Delete history, bookmarks, and downloads',
     cancel: 'Cancel',
@@ -710,7 +710,7 @@ export default function MiniWaveBrowser() {
       <View style={[styles.browserChrome, { paddingTop: insets.top + 6, backgroundColor: displayColors.background }]}>
         <View style={[styles.brandLine, { flexDirection: rowDirection }]}>
           <View style={[styles.logoMark, { backgroundColor: displayColors.primary }]}><Ionicons name="pulse" size={19} color={displayColors.primaryForeground} /></View>
-          <Text style={[styles.brandText, { color: displayColors.foreground }]}>{rtl ? 'ميني ويف' : 'MiniWave'}</Text>
+          <Text style={[styles.brandText, { color: displayColors.foreground }]}>عمار جلعوم</Text>
           <View style={styles.chromeSpacer} />
           <IconButton name="qr-code-outline" label={lang.qr} color={displayColors.primary} onPress={() => setQrOpen(true)} />
           <IconButton name="copy-outline" label={lang.newTab} color={displayColors.mutedForeground} onPress={() => createTab(false)} />
@@ -827,7 +827,7 @@ export default function MiniWaveBrowser() {
               <SettingRow icon="notifications-outline" title={lang.notification} detail={lang.notificationDetail} colors={displayColors} trailing={<Switch value={settings.notifications} onValueChange={(value) => void requestNotifications(value)} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <SettingRow icon="eye-off-outline" title={lang.privateDefault} detail={lang.privateDetail} colors={displayColors} trailing={<Switch value={settings.privateDefault} onValueChange={(value) => setSettings((current) => ({ ...current, privateDefault: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <Pressable onPress={resetData} style={[styles.resetRow, { borderColor: displayColors.border, backgroundColor: displayColors.card, flexDirection: rowDirection }]}><Ionicons name="trash-bin-outline" size={22} color={displayColors.destructive} /><View style={styles.tabCardCopy}><Text style={[styles.tabCardTitle, { color: displayColors.destructive, textAlign }]}>{lang.reset}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{lang.resetDetail}</Text></View></Pressable>
-              <View style={[styles.aboutBox, { backgroundColor: displayColors.primary }]}><Text style={[styles.aboutName, { color: displayColors.primaryForeground }]}>MiniWave Browser</Text><Text style={[styles.aboutDetail, { color: displayColors.primaryForeground }]}>{lang.fileUpload}</Text><Text style={[styles.aboutVersion, { color: displayColors.primaryForeground }]}>v1.0 · Android browser</Text></View>
+              <View style={[styles.aboutBox, { backgroundColor: displayColors.primary }]}><Text style={[styles.aboutName, { color: displayColors.primaryForeground }]}>عمار جلعوم</Text><Text style={[styles.aboutDetail, { color: displayColors.primaryForeground }]}>متصفح عمار جلعوم · {lang.fileUpload}</Text><Text style={[styles.aboutVersion, { color: displayColors.primaryForeground }]}>v1.0 · Android browser</Text></View>
             </ScrollView>
           </View>
         </View>
