@@ -553,8 +553,22 @@ export default function MiniWaveBrowser() {
   const onWebMessage = useCallback((event: WebViewMessageEvent, tabId: string) => {
     if (tabId !== activeTabId) return;
     try {
-      const message = JSON.parse(event.nativeEvent.data) as { type?: string; url?: string; title?: string; sources?: MediaCandidate[] };
+      const message = JSON.parse(event.nativeEvent.data) as {
+        type?: string;
+        url?: string;
+        title?: string;
+        sources?: MediaCandidate[];
+      };
       if (message.type === 'download' && message.url) void startDownload(message.url, message.title);
+      if (message.type === 'share' && message.url) {
+        void Share.share({ message: message.url, title: message.title });
+      }
+      if (message.type === 'favorite') {
+        toggleBookmark();
+      }
+      if (message.type === 'back') {
+        webRefs.current[tabId]?.goBack();
+      }
       if (message.type === 'media') {
         const sources = (message.sources ?? [])
           .filter((item) => item.url && /^https?:\/\//i.test(item.url))
@@ -567,7 +581,7 @@ export default function MiniWaveBrowser() {
     } catch {
       // Ignore messages from pages that are not JSON.
     }
-  }, [activeTabId, lang.downloadVideo, startDownload]);
+  }, [activeTabId, lang.downloadVideo, startDownload, toggleBookmark]);
 
   const injectedJavaScript = useMemo(() => `
     (function() {
@@ -579,59 +593,198 @@ export default function MiniWaveBrowser() {
       function usableMediaUrl(url) {
         return !!url && /^https?:\\/\\//i.test(url) && !/\\.m3u8(?:$|\\?)/i.test(url);
       }
-      function addVideoDownloadButton(mediaElement) {
-        if (!mediaElement || mediaElement.tagName !== 'VIDEO' || mediaElement.dataset.miniwaveDownloadReady === '1') return;
-        mediaElement.dataset.miniwaveDownloadReady = '1';
+      function mediaUrl(mediaElement) {
+        var source = mediaElement.querySelector('source');
+        return mediaElement.currentSrc || mediaElement.src || (source && source.src) || '';
+      }
+      function formatTime(value) {
+        if (!isFinite(value) || value < 0) return '00:00';
+        var totalSeconds = Math.floor(value);
+        var hours = Math.floor(totalSeconds / 3600);
+        var minutes = Math.floor((totalSeconds % 3600) / 60);
+        var seconds = totalSeconds % 60;
+        if (hours > 0) return [hours, minutes, seconds].map(function(part) { return String(part).padStart(2, '0'); }).join(':');
+        return [minutes, seconds].map(function(part) { return String(part).padStart(2, '0'); }).join(':');
+      }
+      function addVideoControls(mediaElement) {
+        if (!mediaElement || mediaElement.tagName !== 'VIDEO' || mediaElement.dataset.miniwaveControlsReady === '1') return;
         var parent = mediaElement.parentElement;
         if (!parent) return;
-        var parentStyle = window.getComputedStyle(parent);
-        if (parentStyle.position === 'static') parent.style.position = 'relative';
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.setAttribute('aria-label', 'Download video');
-        button.textContent = 'تنزيل';
-        button.style.cssText = [
-          'position:absolute',
-          'top:12px',
-          'right:12px',
-          'z-index:2147483647',
-          'display:none',
-          'align-items:center',
-          'justify-content:center',
-          'padding:8px 12px',
-          'border:0',
-          'border-radius:9px',
-          'background:#176b68',
-          'color:#ffffff',
-          'font:700 13px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
-          'box-shadow:0 2px 8px rgba(0,0,0,.35)',
-          'cursor:pointer',
-          'direction:rtl',
-          'pointer-events:auto'
+        mediaElement.dataset.miniwaveControlsReady = '1';
+
+        var originalWidth = mediaElement.getBoundingClientRect().width;
+        var parentWidth = parent.getBoundingClientRect().width;
+        var shell = document.createElement('div');
+        shell.setAttribute('data-miniwave-video-shell', '1');
+        shell.style.cssText = [
+          'position:relative',
+          'display:inline-block',
+          'vertical-align:top',
+          'max-width:100%',
+          'background:#000',
+          'line-height:0',
+          originalWidth > 0 && parentWidth > 0 && originalWidth < parentWidth * .86 ? 'width:' + originalWidth + 'px' : 'width:100%'
         ].join(';');
-        function updateButton() {
-          var url = mediaElement.currentSrc || mediaElement.src;
-          button.style.display = usableMediaUrl(url) && !mediaElement.paused ? 'flex' : 'none';
+        parent.insertBefore(shell, mediaElement);
+        shell.appendChild(mediaElement);
+        mediaElement.style.display = 'block';
+        mediaElement.style.width = '100%';
+        mediaElement.style.maxWidth = '100%';
+
+        var progress = document.createElement('div');
+        progress.setAttribute('aria-label', 'Video progress');
+        progress.style.cssText = [
+          'height:3px',
+          'width:100%',
+          'background:rgba(255,255,255,.28)',
+          'cursor:pointer',
+          'opacity:0',
+          'transition:opacity .18s ease'
+        ].join(';');
+        var progressFill = document.createElement('div');
+        progressFill.style.cssText = 'height:100%;width:0;background:#fff;transition:width .1s linear;';
+        progress.appendChild(progressFill);
+
+        var controls = document.createElement('div');
+        controls.setAttribute('role', 'toolbar');
+        controls.setAttribute('aria-label', 'Video controls');
+        controls.style.cssText = [
+          'display:flex',
+          'align-items:center',
+          'gap:5px',
+          'width:100%',
+          'min-height:38px',
+          'padding:4px 6px',
+          'box-sizing:border-box',
+          'background:#000',
+          'color:#fff',
+          'direction:ltr',
+          'opacity:0',
+          'max-height:0',
+          'overflow:hidden',
+          'pointer-events:none',
+          'transition:opacity .18s ease,max-height .18s ease',
+          'font:12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif'
+        ].join(';');
+
+        var time = document.createElement('span');
+        time.style.cssText = 'flex:1;min-width:54px;color:#fff;font-size:10px;line-height:24px;white-space:nowrap;text-align:left;';
+        time.textContent = '00:00 / 00:00';
+        controls.appendChild(time);
+
+        function controlButton(label, icon) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.setAttribute('aria-label', label);
+          button.setAttribute('title', label);
+          button.textContent = icon;
+          button.style.cssText = [
+            'display:flex',
+            'align-items:center',
+            'justify-content:center',
+            'width:27px',
+            'height:27px',
+            'padding:0',
+            'border:0',
+            'background:transparent',
+            'color:#fff',
+            'font:18px/1 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
+            'cursor:pointer',
+            'opacity:.95',
+            'touch-action:manipulation'
+          ].join(';');
+          button.addEventListener('touchstart', showControls, {passive:true});
+          button.addEventListener('click', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            showControls();
+          }, true);
+          controls.appendChild(button);
+          return button;
         }
-        button.addEventListener('click', function(event) {
-          event.preventDefault();
-          event.stopPropagation();
-          var url = mediaElement.currentSrc || mediaElement.src;
-          if (usableMediaUrl(url)) send('download', {url:url, title:'video-' + Date.now()});
+
+        var shareButton = controlButton('Share', '↗');
+        var favoriteButton = controlButton('Favorite', '☆');
+        var downloadButton = controlButton('Download', '↓');
+        var backButton = controlButton('Back', '‹');
+        var fullscreenButton = controlButton('Fullscreen', '⛶');
+        shell.appendChild(progress);
+        shell.appendChild(controls);
+
+        var hideTimer = null;
+        function setControlsVisible(visible) {
+          controls.style.opacity = visible ? '1' : '0';
+          controls.style.maxHeight = visible ? '42px' : '0';
+          controls.style.pointerEvents = visible ? 'auto' : 'none';
+          progress.style.opacity = visible ? '1' : '0';
+        }
+        function showControls() {
+          setControlsVisible(true);
+          if (hideTimer) clearTimeout(hideTimer);
+          if (!mediaElement.paused) {
+            hideTimer = setTimeout(function() { setControlsVisible(false); }, 3200);
+          }
+        }
+        function updateProgress() {
+          var duration = mediaElement.duration;
+          var ratio = duration > 0 && isFinite(duration) ? Math.min(1, Math.max(0, mediaElement.currentTime / duration)) : 0;
+          progressFill.style.width = (ratio * 100) + '%';
+          time.textContent = formatTime(mediaElement.currentTime) + ' / ' + formatTime(duration);
+          downloadButton.style.opacity = usableMediaUrl(mediaUrl(mediaElement)) ? '.95' : '.35';
+        }
+        function seek(event) {
+          var duration = mediaElement.duration;
+          if (!duration || !isFinite(duration)) return;
+          var rect = progress.getBoundingClientRect();
+          var fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+          mediaElement.currentTime = duration * fraction;
+          showControls();
+        }
+
+        shareButton.addEventListener('click', function() {
+          send('share', {url: location.href, title: document.title});
         }, true);
-        ['play', 'playing', 'loadedmetadata', 'loadeddata', 'canplay', 'durationchange', 'pause', 'ended', 'emptied'].forEach(function(eventName) {
-          mediaElement.addEventListener(eventName, updateButton, true);
+        favoriteButton.addEventListener('click', function() {
+          favoriteButton.textContent = favoriteButton.textContent === '★' ? '☆' : '★';
+          send('favorite', {url: location.href, title: document.title});
+        }, true);
+        downloadButton.addEventListener('click', function() {
+          var url = mediaUrl(mediaElement);
+          if (usableMediaUrl(url)) send('download', {url:url, title: document.title || 'video-' + Date.now()});
+        }, true);
+        backButton.addEventListener('click', function() {
+          send('back');
+        }, true);
+        fullscreenButton.addEventListener('click', function() {
+          try {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else if (mediaElement.requestFullscreen) {
+              mediaElement.requestFullscreen();
+            } else if (mediaElement.webkitEnterFullscreen) {
+              mediaElement.webkitEnterFullscreen();
+            }
+          } catch(e) {}
+        }, true);
+        progress.addEventListener('click', seek, true);
+        controls.addEventListener('touchstart', showControls, {passive:true});
+        mediaElement.addEventListener('click', showControls, true);
+        mediaElement.addEventListener('touchstart', showControls, {passive:true});
+        ['timeupdate', 'loadedmetadata', 'loadeddata', 'durationchange', 'progress', 'canplay', 'emptied'].forEach(function(eventName) {
+          mediaElement.addEventListener(eventName, updateProgress, true);
         });
-        parent.appendChild(button);
-        updateButton();
+        mediaElement.addEventListener('play', showControls, true);
+        mediaElement.addEventListener('pause', function() { setControlsVisible(true); }, true);
+        mediaElement.addEventListener('ended', function() { setControlsVisible(true); }, true);
+        updateProgress();
       }
       function media() {
         var videos = Array.prototype.slice.call(document.querySelectorAll('video, audio'));
         var sources = [];
         videos.forEach(function(mediaElement) {
-          addVideoDownloadButton(mediaElement);
+          addVideoControls(mediaElement);
           if (mediaElement.paused || mediaElement.ended) return;
-          var url = mediaElement.currentSrc || mediaElement.src;
+          var url = mediaUrl(mediaElement);
           if (usableMediaUrl(url)) sources.push({url:url, label: mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video'), isPlaying:true});
           Array.prototype.slice.call(mediaElement.querySelectorAll('source')).forEach(function(source, index) {
             var sourceUrl = source.src;
