@@ -16,7 +16,7 @@ if (source.includes(marker)) {
 // Keep this patch deliberately self-contained: it enhances the existing WebView
 // without replacing the browser architecture or introducing native dependencies.
 const before = "      var dataSaver = ${settings.dataSaver ? 'true' : 'false'};";
-const after = `      var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
+const after = `      var dataSaver = \${settings.dataSaver ? 'true' : 'false'};
       var ucMiniTools = true; // ${marker}
       var ucGestureStartX = null;
       var ucGestureStartY = null;
