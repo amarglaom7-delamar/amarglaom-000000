@@ -14,8 +14,9 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+// Keep native splash from being hidden before the root navigator is ready.
+// A bounded fallback prevents a permanent splash if font loading hangs/fails.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient();
 
@@ -36,13 +37,26 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
+    let cancelled = false;
+    const hideSplash = () => {
+      if (!cancelled) SplashScreen.hideAsync().catch(() => {});
+    };
+
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      hideSplash();
+      return () => { cancelled = true; };
     }
+
+    // Never allow an asset-loading problem to leave the APK permanently on splash.
+    const fallback = setTimeout(hideSplash, 3000);
+    return () => {
+      cancelled = true;
+      clearTimeout(fallback);
+    };
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
-
+  // Start the navigation tree even if font loading is delayed. The Inter font
+  // family has safe system fallbacks, so startup must not depend on the font.
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
