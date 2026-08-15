@@ -52,6 +52,9 @@ jobs:
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Apply video control UI patch
+        run: node scripts/patch-video-controls.js
+
       - name: Validate TypeScript
         run: pnpm run typecheck
 
