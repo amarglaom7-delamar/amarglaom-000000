@@ -58,6 +58,9 @@ jobs:
       - name: Apply in-video subtitle patch
         run: node scripts/patch-video-subtitles.js
 
+      - name: Apply UC Mini 2022-inspired video tools
+        run: node scripts/apply-uc-mini-2022-tools.js
+
       - name: Validate TypeScript
         run: pnpm run typecheck
 
