@@ -55,6 +55,9 @@ jobs:
       - name: Apply video control UI patch
         run: node scripts/patch-video-controls.js
 
+      - name: Harden in-video controls overlay
+        run: node scripts/patch-video-controls-v2.js
+
       - name: Apply in-video subtitle patch
         run: node scripts/patch-video-subtitles.js
 
