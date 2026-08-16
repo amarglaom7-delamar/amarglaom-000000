@@ -18,6 +18,7 @@ const replacement = `${anchor}
         subtitleButton.style.fontSize = '11px';
         subtitleButton.style.fontWeight = '700';
         subtitleButton.setAttribute('data-miniwave-subtitles', '1');
+        controls.appendChild(subtitleButton);
 
         var subtitlePanel = document.createElement('div');
         subtitlePanel.style.cssText = [
