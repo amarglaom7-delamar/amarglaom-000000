@@ -4,8 +4,8 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "EXPO_PACKAGER_PROXY_URL=${EXPO_PACKAGER_PROXY_URL:-https://$REPLIT_EXPO_DEV_DOMAIN} EXPO_PUBLIC_DOMAIN=${EXPO_PUBLIC_DOMAIN:-${REPLIT_DEV_DOMAIN:-localhost}} REACT_NATIVE_PACKAGER_HOSTNAME=${REACT_NATIVE_PACKAGER_HOSTNAME:-${REPLIT_DEV_DOMAIN:-127.0.0.1}} EXPO_PUBLIC_REPL_ID=${EXPO_PUBLIC_REPL_ID:-local} pnpm exec expo start --localhost --port ${PORT:-8081}",
-    "build": "node scripts/patch-video-controls.js && node scripts/patch-inline-video-player.js && node scripts/patch-ad-performance.js && node scripts/patch-last-url.js && node scripts/build.js",
+    "dev": "EXPO_PACKAGER_PROXY_URL=${EXPO_PACKAGER_PROXY_URL:-https://$REPLIT_EXPO_DEV_DOMAIN} EXPO_PUBLIC_DOMAIN=${EXPO_PUBLIC_DOMAIN:-${REPLIT_DEV_DOMAIN:-localhost}} EXPO_PUBLIC_REPL_ID=${EXPO_PUBLIC_REPL_ID:-local} REACT_NATIVE_PACKAGER_HOSTNAME=${REACT_NATIVE_PACKAGER_HOSTNAME:-${REPLIT_DEV_DOMAIN:-127.0.0.1}} pnpm exec expo start --localhost --port ${PORT:-8081}",
+    "build": "node scripts/patch-video-controls.js && node scripts/patch-inline-video-player.js && node scripts/patch-ad-performance.js && node scripts/patch-resume-url.js && node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -15,7 +15,7 @@
     "@expo/cli": "54.0.23",
     "@expo/ngrok": "^4.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "@stardazed/streams-text-encoding": "^1.0.2",
+    "@stardazed/streams-text-encoding": "^1.0.0",
     "@tanstack/react-query": "^5.90.21",
     "@types/react": "~19.1.10",
     "@types/react-dom": "~19.1.7",
