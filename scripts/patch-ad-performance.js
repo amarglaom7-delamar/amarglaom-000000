@@ -1,0 +1,12 @@
+const fs = require('fs');
+const path = require('path');
+const file = path.join(path.resolve(__dirname, '..'), 'app', '(tabs)', 'index.tsx');
+if (!fs.existsSync(file)) throw new Error(`Browser source not found: ${file}`);
+let source = fs.readFileSync(file, 'utf8');
+if (source.includes('data-miniwave-ad-performance-v1')) process.exit(0);
+const anchor = "const IN_PAGE_VIDEO_SCRIPT = `";
+if (!source.includes(anchor)) throw new Error('In-page script anchor not found; refusing partial patch.');
+const patch = `\n// data-miniwave-ad-performance-v1\n(() => {\n  const H = /(^|[\\W_])(ad|ads|advert|advertisement|banner|doubleclick|googlesyndication|adservice|popunder)([\\W_]|$)/i;\n  const isAd = (e) => { if (!(e instanceof Element)) return false; const s = ((e.id||'')+' '+(e.className||'')+' '+(e.getAttribute('src')||'')+' '+(e.getAttribute('href')||'')).slice(0,1000); return H.test(s); };\n  const clean = () => document.querySelectorAll('iframe,[role="dialog"],.popup,.popunder').forEach(e => { if (!isAd(e)) return; const r=e.getBoundingClientRect(); if(r.width>=innerWidth*.55 || r.height>=innerHeight*.35){e.style.setProperty('visibility','hidden','important');e.style.setProperty('pointer-events','none','important');} });\n  let queued=false; const schedule=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;clean();});};\n  const mo=new MutationObserver(schedule); mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','class','style']});\n  setTimeout(clean,700); setTimeout(clean,1800); setTimeout(()=>mo.disconnect(),12000);\n})();\n`;
+source = source.replace(anchor, anchor + patch);
+fs.writeFileSync(file, source);
+console.log('Applied lightweight ad performance protection.');
