@@ -895,6 +895,7 @@ export default function MiniWaveBrowser() {
 
   const injectedJavaScript = useMemo(() => `
     (function() {
+      var __miniwaveInternalVideo = null;
       var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
       var script = document.createElement('style');
       script.innerHTML = dataSaver ? 'img, picture, video, iframe[src*="ads"] { opacity: .88; }' : '';
@@ -1163,6 +1164,8 @@ export default function MiniWaveBrowser() {
         }
         mediaElement.addEventListener('click', function(event) {
           try {
+            __miniwaveInternalVideo = mediaElement;
+            __miniwaveInternalVideo = mediaElement;
             var rect = mediaElement.getBoundingClientRect();
             var url = mediaUrl(mediaElement);
             var sources = [];
@@ -1226,7 +1229,7 @@ export default function MiniWaveBrowser() {
       });
       window.addEventListener('scroll', function() {
         try {
-          var active = document.querySelector('video[data-miniwave-controls-ready="1"]');
+          var active = __miniwaveInternalVideo || document.querySelector('video[data-miniwave-controls-ready="1"]');
           if (!active) return;
           var rect = active.getBoundingClientRect();
           if (rect.width > 0 && rect.height > 0) send('videoRect', {rect:{left:rect.left, top:rect.top, width:rect.width, height:rect.height}});
