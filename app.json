@@ -51,7 +51,8 @@
       [
         "expo-video",
         {
-          "supportsPictureInPicture": true
+          "supportsPictureInPicture": true,
+          "supportsBackgroundPlayback": true
         }
       ]
     ],
