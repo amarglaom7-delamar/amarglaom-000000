@@ -8,11 +8,11 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 type Bookmark = { id: string; title: string; url: string; createdAt: number };
 
 export default function UCMiniTools({
-  visible, onClose, nightMode, textOnly, onToggleNight, onToggleText, onSavePage, onOpenVideos, onOpenSavedPages, bookmarks, setBookmarks, onNotice,
+  visible, onClose, nightMode, textOnly, onToggleNight, onToggleText, onSavePage, onOpenVideos, onOpenSavedPages, onTranslatePage, bookmarks, setBookmarks, onNotice,
 }: {
   visible: boolean; onClose: () => void; nightMode: boolean; textOnly: boolean;
   onToggleNight: () => void; onToggleText: () => void; onSavePage: () => void;
-  onOpenVideos: () => void; onOpenSavedPages: () => void;
+  onOpenVideos: () => void; onOpenSavedPages: () => void; onTranslatePage: () => void;
   bookmarks: Bookmark[]; setBookmarks: React.Dispatch<React.SetStateAction<Bookmark[]>>;
   onNotice: (text: string) => void;
 }) {
@@ -67,6 +67,7 @@ export default function UCMiniTools({
         {row('download-outline','حفظ الصفحة','حفظ نسخة HTML محلية',onSavePage)}
         {row('videocam-outline','فيديوهاتي','الفيديوهات المكتملة في التنزيلات',onOpenVideos)}
         {row('documents-outline','الصفحات المحفوظة','فتح النسخ المحلية المحفوظة',onOpenSavedPages)}
+        {row('language-outline','ترجمة الصفحة','فتح ترجمة الصفحة الحالية',onTranslatePage)}
         {row('download-outline','استيراد المفضلة','استيراد ملف HTML من الجهاز',()=>void importBookmarks())}
         {row('share-outline','تصدير المفضلة','إنشاء ملف مفضلة قابل للاستيراد',()=>void exportBookmarks())}
         <Pressable onPress={()=>void checkNetwork()} style={styles.row}><Ionicons name="speedometer-outline" size={23} color="#4f8cff"/><View style={styles.copy}><Text style={styles.title}>فحص الشبكة</Text><Text style={styles.detail}>{checking?'جارٍ الفحص…':network||'اختبار الاتصال وزمن الاستجابة'}</Text></View>{checking?<ActivityIndicator size="small" color="#4f8cff"/>:<Ionicons name="chevron-forward" size={18} color="#888"/>}</Pressable>
