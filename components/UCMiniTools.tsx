@@ -6,7 +6,6 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 type Bookmark = { id: string; title: string; url: string; createdAt: number };
-type SavedPage = { id: string; title: string; url: string; localUri: string; savedAt: number };
 
 export default function UCMiniTools({
   visible, onClose, nightMode, textOnly, onToggleNight, onToggleText, onSavePage, onOpenVideos, onOpenSavedPages, bookmarks, setBookmarks, onNotice,
