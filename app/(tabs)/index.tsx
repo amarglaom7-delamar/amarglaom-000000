@@ -802,6 +802,14 @@ export default function MiniWaveBrowser() {
         title?: string;
         sources?: MediaCandidate[];
       };
+      if (message.type === 'videoRect' && message.rect && internalPlayer) {
+        setInternalPlayerFrame({
+          left: Math.max(0, Number(message.rect.left) || 0),
+          top: Math.max(0, Number(message.rect.top) || 0),
+          width: Math.max(120, Number(message.rect.width) || 0),
+          height: Math.max(90, Number(message.rect.height) || 0),
+        });
+      }
       if (message.type === 'download' && message.url) void startDownload(message.url, message.title);
       if (message.type === 'share' && message.url) {
         void Share.share({ message: message.url, title: message.title });
@@ -1153,8 +1161,32 @@ export default function MiniWaveBrowser() {
           sourceList = sourceList.filter(function(item, index, all) { return all.findIndex(function(candidate) { return candidate.url === item.url; }) === index; }).slice(0, 8);
           send('openPlayer', {url:url, title:document.title || 'Video', sources:sourceList});
         }
-        mediaElement.addEventListener('click', function() { showControls(); }, true);
-        mediaElement.addEventListener('touchstart', function() { showControls(); }, {passive:true});
+        mediaElement.addEventListener('click', function(event) {
+          try {
+            var rect = mediaElement.getBoundingClientRect();
+            var url = mediaUrl(mediaElement);
+            var sources = [];
+            if (url) sources.push({url:url, label:'الفيديو', isPlaying:true});
+            Array.prototype.slice.call(mediaElement.querySelectorAll('source')).forEach(function(source, index) {
+              if (usableMediaUrl(source.src)) sources.push({url:source.src, label:source.getAttribute('label') || source.getAttribute('size') || ('جودة ' + (index + 1)), isPlaying:true});
+            });
+            var uniqueSources = sources.filter(function(item, index, all) {
+              return all.findIndex(function(candidate) { return candidate.url === item.url; }) === index;
+            });
+            mediaElement.pause();
+            send('openPlayer', {url:url, sources:uniqueSources, rect:{left:rect.left, top:rect.top, width:rect.width, height:rect.height}});
+            if (event && event.preventDefault) event.preventDefault();
+            if (event && event.stopPropagation) event.stopPropagation();
+          } catch(e) {}
+        }, true);
+        mediaElement.addEventListener('touchstart', function() {
+          try {
+            var rect = mediaElement.getBoundingClientRect();
+            var url = mediaUrl(mediaElement);
+            var sources = url ? [{url:url, label:'الفيديو', isPlaying:true}] : [];
+            send('openPlayer', {url:url, sources:sources, rect:{left:rect.left, top:rect.top, width:rect.width, height:rect.height}});
+          } catch(e) {}
+        }, {passive:true});
         ['timeupdate', 'loadedmetadata', 'loadeddata', 'durationchange', 'progress', 'canplay', 'emptied'].forEach(function(eventName) {
           mediaElement.addEventListener(eventName, updateProgress, true);
         });
@@ -1192,6 +1224,14 @@ export default function MiniWaveBrowser() {
       ['loadedmetadata', 'loadeddata', 'canplay', 'play', 'durationchange', 'progress'].forEach(function(eventName) {
         document.addEventListener(eventName, media, true);
       });
+      window.addEventListener('scroll', function() {
+        try {
+          var active = document.querySelector('video[data-miniwave-controls-ready="1"]');
+          if (!active) return;
+          var rect = active.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) send('videoRect', {rect:{left:rect.left, top:rect.top, width:rect.width, height:rect.height}});
+        } catch(e) {}
+      }, {passive:true});
       var observer = new MutationObserver(media);
       observer.observe(document.documentElement || document, {childList:true, subtree:true, attributes:true, attributeFilter:['src']});
       media();
