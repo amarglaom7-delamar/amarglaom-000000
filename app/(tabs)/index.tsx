@@ -853,6 +853,7 @@ export default function MiniWaveBrowser() {
   const injectedJavaScript = useMemo(() => `
     (function() {
       var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
+      (function(){var bad=/popup|popunder|doubleclick|googlesyndication|adservice|adnxs|exoclick|onclickads|propellerads|trafficjunky/i;var ow=window.open;window.open=function(u){try{if(u&&bad.test(String(u)))return null;}catch(e){}return null;};document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(a&&a.target==='_blank'&&a.href&&bad.test(a.href)){e.preventDefault();e.stopPropagation();}},true);})();
       var n=${nightMode?'true':'false'},x=${textOnly?'true':'false'};function pm(){var s=document.getElementById('miniwave-page-mode');if(!s){s=document.createElement('style');s.id='miniwave-page-mode';document.documentElement.appendChild(s)}s.textContent=(window.__n?'html,body{background:#111!important;color:#eee!important}a{color:#8ab4f8!important}input,textarea,select,button{background:#222!important;color:#eee!important;border-color:#555!important}img,video{filter:brightness(.82)}':'')+(window.__x?'video,audio,img,picture,iframe,canvas,svg,object,embed{display:none!important}':'')}window.__n=n;window.__x=x;pm();document.addEventListener('miniwave-page-mode',function(e){var d=e.detail||{};window.__n=!!d.night;window.__x=!!d.textOnly;pm()});
       var script = document.createElement('style');
       script.innerHTML = dataSaver ? 'img:not([data-miniwave-loaded]), picture, iframe[src*="ads"] { opacity: .88; }' : '';
