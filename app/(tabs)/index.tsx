@@ -485,6 +485,7 @@ export default function MiniWaveBrowser() {
   const [textOnly, setTextOnly] = useState(false);
   const [pagePositions, setPagePositions] = useState<Record<string, number>>({});
   const pagePositionsRef = useRef<Record<string, number>>({});
+  const pageSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastNavRef = useRef<Record<string,{url:string;at:number}>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabsOpen, setTabsOpen] = useState(false);
@@ -1156,7 +1157,7 @@ export default function MiniWaveBrowser() {
         onError={() => { if (tab.id === activeTabId) setError(lang.errorPage); setTab(tab.id, { loading: false }); }}
         onHttpError={() => { if (tab.id === activeTabId) setError(lang.errorPage); }}
         onMessage={(event) => onWebMessage(event, tab.id)}
-        onScroll={(event) => { const y=event.nativeEvent.contentOffset.y; if(y<1) return; const key=tab.url.split('#')[0]; pagePositionsRef.current[key]=y; setPagePositions(prev=>prev[key]===y?prev:{...prev,[key]:y}); }}
+        onScroll={(event) => { const y=event.nativeEvent.contentOffset.y; if(y<1) return; const key=tab.url.split('#')[0]; pagePositionsRef.current[key]=y; if(!pageSaveTimerRef.current){ pageSaveTimerRef.current=setTimeout(()=>{pageSaveTimerRef.current=null;setPagePositions({...pagePositionsRef.current});},350); } }}
         onFileDownload={(event) => void startDownload(event.nativeEvent.downloadUrl)}
         onShouldStartLoadWithRequest={(request) => {
           const u=request.url.toLowerCase();
