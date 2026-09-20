@@ -760,6 +760,34 @@ export default function MiniWaveBrowser() {
     }
   }, [downloads, lang.downloadDone, lang.downloadFailed, lang.downloadResumed, notifyDownload]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+    downloads.filter((item) => item.status === 'paused' && item.resumeData && !downloadsRef.current[item.id]).forEach((item) => {
+      try {
+        const snapshot = JSON.parse(item.resumeData || '{}') as {
+          url?: string;
+          fileUri?: string;
+          options?: Record<string, unknown>;
+          resumeData?: string;
+        };
+        if (!snapshot.url || !snapshot.fileUri || !snapshot.resumeData) return;
+        const task = FileSystem.createDownloadResumable(
+          snapshot.url,
+          snapshot.fileUri,
+          snapshot.options || {},
+          (progress) => {
+            const ratio = progress.totalBytesExpectedToWrite > 0 ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite : 0;
+            setDownloads((items) => items.map((entry) => entry.id === item.id ? { ...entry, progress: Math.min(99, Math.round(ratio * 100)) } : entry));
+          },
+          snapshot.resumeData,
+        );
+        downloadsRef.current[item.id] = task;
+      } catch {
+        // Ignore invalid saved resume snapshots.
+      }
+    });
+  }, [downloads, hydrated]);
+
   const onWebMessage = useCallback((event: WebViewMessageEvent, tabId: string) => {
     if (tabId !== activeTabId) return;
     try {
