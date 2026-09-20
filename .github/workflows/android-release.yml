@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - ucmini-2022-upgrade
   workflow_dispatch:
 
 permissions:
