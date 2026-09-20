@@ -453,7 +453,7 @@ function InternalVideoPlayer({
               <View style={styles.internalPlayerBottom}>
                 <Pressable onPress={seekFromProgress} onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)} style={styles.internalPlayerProgressTrack}>
                   <View style={[styles.internalPlayerProgressFill, { width: duration ? ((currentTime / duration) * 100) + '%' : '0%' }]} />
-                </View>
+                </Pressable>
                 <View style={styles.internalPlayerControlsRow}>
                   <Pressable onPress={() => player.seekBy(-10)} style={styles.internalPlayerControl}><Ionicons name="play-back" size={21} color="#ffffff" /></Pressable>
                   <Pressable onPress={togglePlay} style={styles.internalPlayerPlay}><Ionicons name={isPlaying ? 'pause' : 'play'} size={25} color="#000000" /></Pressable>
