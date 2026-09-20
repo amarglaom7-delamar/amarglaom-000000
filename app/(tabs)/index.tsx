@@ -834,8 +834,16 @@ export default function MiniWaveBrowser() {
     (function() {
       var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
       var script = document.createElement('style');
-      script.innerHTML = dataSaver ? 'img, picture, video, iframe[src*="ads"] { opacity: .88; }' : '';
+      script.innerHTML = dataSaver ? 'img:not([data-miniwave-loaded]), picture, iframe[src*="ads"] { opacity: .88; }' : '';
       document.documentElement.appendChild(script);
+      if (dataSaver) {
+        document.querySelectorAll('video, audio').forEach(function(media) {
+          try { media.autoplay = false; media.preload = 'metadata'; } catch(e) {}
+        });
+        document.querySelectorAll('img').forEach(function(img) {
+          try { if (!img.getAttribute('loading')) img.setAttribute('loading', 'lazy'); } catch(e) {}
+        });
+      }
       function send(type, payload) { try { window.ReactNativeWebView.postMessage(JSON.stringify(Object.assign({type:type}, payload || {}))); } catch(e) {} }
       function isHlsUrl(url) {
         return !!url && /^https?:\\/\\//i.test(url) && /\\.m3u8(?:$|\\?)/i.test(url);
@@ -1119,6 +1127,9 @@ export default function MiniWaveBrowser() {
         injectedJavaScript={injectedJavaScript}
         javaScriptEnabled
         domStorageEnabled
+        incognito={tab.private}
+        cacheEnabled={!tab.private}
+        cacheMode={tab.private ? 'LOAD_NO_CACHE' : 'LOAD_DEFAULT'}
         allowsFullscreenVideo
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
