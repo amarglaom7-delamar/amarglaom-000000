@@ -483,6 +483,8 @@ export default function MiniWaveBrowser() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [nightMode, setNightMode] = useState(false);
   const [textOnly, setTextOnly] = useState(false);
+  const [pagePositions, setPagePositions] = useState<Record<string, number>>({});
+  const pagePositionsRef = useRef<Record<string, number>>({});
   const lastNavRef = useRef<Record<string,{url:string;at:number}>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabsOpen, setTabsOpen] = useState(false);
@@ -519,13 +521,15 @@ export default function MiniWaveBrowser() {
       AsyncStorage.getItem(STORAGE.bookmarks),
       AsyncStorage.getItem(STORAGE.downloads),
       AsyncStorage.getItem(STORAGE.savedPages),
+      AsyncStorage.getItem('@miniwave/pagePositions'),
       AsyncStorage.getItem(STORAGE.settings),
-    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSavedPages, storedSettings]) => {
+    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSavedPages, storedPagePositions, storedSettings]) => {
       try {
         if (storedHistory) setHistory(JSON.parse(storedHistory) as HistoryEntry[]);
         if (storedBookmarks) setBookmarks(JSON.parse(storedBookmarks) as Bookmark[]);
         if (storedDownloads) setDownloads(JSON.parse(storedDownloads) as DownloadEntry[]);
         if (storedSavedPages) setSavedPages(JSON.parse(storedSavedPages) as SavedPage[]);
+        if (storedPagePositions) { const parsed=JSON.parse(storedPagePositions) as Record<string,number>; pagePositionsRef.current=parsed; setPagePositions(parsed); }
         if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>) });
       } catch {
         setNotice(lang.offline);
@@ -806,6 +810,7 @@ export default function MiniWaveBrowser() {
   }, [downloads, hydrated]);
 
   useEffect(()=>{void AsyncStorage.setItem(STORAGE.savedPages,JSON.stringify(savedPages));},[savedPages]);
+  useEffect(()=>{void AsyncStorage.setItem('@miniwave/pagePositions',JSON.stringify(pagePositions));},[pagePositions]);
   const savePageSnapshot=useCallback(async(html:string,title:string,url:string)=>{try{const safe=title.replace(/[^\w\u0600-\u06ff.-]+/g,'_').slice(0,60)||'page';const uri=`${FileSystem.documentDirectory??FileSystem.cacheDirectory}saved-${Date.now()}-${safe}.html`;await FileSystem.writeAsStringAsync(uri,html.replace(/<head>/i,`<head><meta charset="utf-8"><base href="${url}">`).replace(/^<!doctype[^>]*>/i,'<!doctype html>'));setSavedPages(cur=>[{id:makeId('page'),title,url,localUri:uri,savedAt:Date.now()},...cur.filter(x=>x.url!==url)].slice(0,50));setNotice('تم حفظ الصفحة على الجهاز');}catch{setNotice('تعذر حفظ الصفحة');}},[]);
   const saveCurrentPage=useCallback(()=>{webRefs.current[activeTabId]?.injectJavaScript(`(function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:'pageSnapshot',html:document.documentElement.outerHTML,title:document.title||location.href,url:location.href}));true;})();`);setToolsOpen(false);},[activeTabId]);
   const injectPageMode=useCallback((night:boolean,text:boolean)=>{webRefs.current[activeTabId]?.injectJavaScript(`(function(){var e=document.createEvent('CustomEvent');e.initCustomEvent('miniwave-page-mode',false,false,{night:${night?'true':'false'},textOnly:${text?'true':'false'}});document.dispatchEvent(e);true;})();`);},[activeTabId]);
@@ -1140,7 +1145,7 @@ export default function MiniWaveBrowser() {
         source={{ uri: tab.url }}
         onLoadProgress={(event) => tab.id === activeTabId && setWebProgress(event.nativeEvent.progress)}
         onLoadStart={() => { if (tab.id === activeTabId) setError(''); setTab(tab.id, { loading: true }); }}
-        onLoadEnd={() => setTab(tab.id, { loading: false })}
+        onLoadEnd={() => { setTab(tab.id, { loading: false }); const pos=pagePositionsRef.current[tab.url]||0; if(pos>0) setTimeout(()=>webRefs.current[tab.id]?.injectJavaScript(`window.scrollTo(0,${Math.round(pos)});true;`),250); }}
         onOpenWindow={(event) => { if (settings.blockTrackers || event.nativeEvent.targetUrl) return; }}
         onNavigationStateChange={(navigation) => {
           const previous=lastNavRef.current[tab.id]; const now=Date.now(); if(previous && previous.url===navigation.url && now-previous.at<700) return; lastNavRef.current[tab.id]={url:navigation.url,at:now};
@@ -1151,6 +1156,7 @@ export default function MiniWaveBrowser() {
         onError={() => { if (tab.id === activeTabId) setError(lang.errorPage); setTab(tab.id, { loading: false }); }}
         onHttpError={() => { if (tab.id === activeTabId) setError(lang.errorPage); }}
         onMessage={(event) => onWebMessage(event, tab.id)}
+        onScroll={(event) => { const y=event.nativeEvent.contentOffset.y; if(y<1) return; const key=tab.url.split('#')[0]; pagePositionsRef.current[key]=y; setPagePositions(prev=>prev[key]===y?prev:{...prev,[key]:y}); }}
         onFileDownload={(event) => void startDownload(event.nativeEvent.downloadUrl)}
         onShouldStartLoadWithRequest={(request) => {
           const u=request.url.toLowerCase();
