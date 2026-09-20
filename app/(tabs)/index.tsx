@@ -424,7 +424,7 @@ function InternalVideoPlayer({
           <VideoView player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
           {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
           {status === 'error' ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
-          {minimized ? <View style={styles.floatingPlayerControls}><Text numberOfLines={1} style={styles.floatingPlayerTitle}>{title}</Text><Pressable onPress={(event) => { event.stopPropagation(); togglePlay(); }}><Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" /></Pressable><Pressable onPress={(event) => { event.stopPropagation(); onClose(); }}><Ionicons name="close" size={19} color="#fff" /></Pressable></View> : null}
+          {minimized ? <View style={styles.floatingPlayerControls}><Text numberOfLines={1} style={styles.floatingPlayerTitle}>{title}</Text><Pressable onPress={() => togglePlay()}><Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" /></Pressable><Pressable onPress={() => onClose()}><Ionicons name="close" size={19} color="#fff" /></Pressable></View> : null}
           {!minimized && showControls ? (
             <View pointerEvents="box-none" style={[styles.internalPlayerOverlay, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
               <View style={styles.internalPlayerTopBar}>
