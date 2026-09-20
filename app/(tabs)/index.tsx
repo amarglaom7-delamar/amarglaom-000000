@@ -340,6 +340,8 @@ function InternalVideoPlayer({
   const source = useMemo(() => isHls ? { uri: candidate.url, contentType: 'hls' as const } : { uri: candidate.url, useCaching: true }, [candidate.url, isHls]);
   const player = useVideoPlayer(source, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
+    instance.staysActiveInBackground = true;
+    instance.showNowPlayingNotification = true;
     instance.play();
   });
   const { currentTime = 0 } = useEvent(player, 'timeUpdate', { currentTime: 0 });
@@ -1062,7 +1064,7 @@ export default function MiniWaveBrowser() {
         var sources = [];
         videos.forEach(function(mediaElement) {
           addVideoControls(mediaElement);
-          if (mediaElement.paused || mediaElement.ended) return;
+          if (mediaElement.ended) return;
           var url = mediaUrl(mediaElement);
           if (usableMediaUrl(url)) sources.push({url:url, label: isHlsUrl(url) ? 'HLS' : (mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video')), isPlaying:true});
           Array.prototype.slice.call(mediaElement.querySelectorAll('source')).forEach(function(source, index) {
@@ -1070,9 +1072,17 @@ export default function MiniWaveBrowser() {
             if (usableMediaUrl(sourceUrl)) sources.push({url:sourceUrl, label: isHlsUrl(sourceUrl) ? 'HLS' : (source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1))), isPlaying:true});
           });
         });
+        try {
+          performance.getEntriesByType('resource').forEach(function(entry) {
+            var resourceUrl = entry && entry.name || '';
+            if (usableMediaUrl(resourceUrl) && (/\\.(mp4|webm|mov|m4v|mp3|m4a|aac|wav|ogg)(?:$|\\?)/i.test(resourceUrl) || isHlsUrl(resourceUrl))) {
+              sources.push({url:resourceUrl, label:isHlsUrl(resourceUrl) ? 'HLS' : 'Media'});
+            }
+          });
+        } catch(e) {}
         var unique = sources.filter(function(item, index, all) {
           return all.findIndex(function(candidate) { return candidate.url === item.url; }) === index;
-        });
+        }).slice(0, 16);
         send('media', {sources:unique});
       }
       document.addEventListener('click', function(event) {
