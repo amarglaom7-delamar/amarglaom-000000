@@ -39,6 +39,7 @@ type SavedPage = { id:string; title:string; url:string; localUri:string; savedAt
 type BrowserTab = {
   id: string;
   url: string;
+  sourceUrl: string;
   title: string;
   private: boolean;
   canGoBack: boolean;
@@ -469,7 +470,7 @@ export default function MiniWaveBrowser() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [hydrated, setHydrated] = useState(false);
   const [tabs, setTabs] = useState<BrowserTab[]>([
-    { id: makeId('tab'), url: HOME_URL, title: 'Google', private: false, canGoBack: false, canGoForward: false, loading: true },
+    { id: makeId('tab'), url: HOME_URL, sourceUrl: HOME_URL, title: 'Google', private: false, canGoBack: false, canGoForward: false, loading: true },
   ]);
   const [activeTabId, setActiveTabId] = useState('');
   const [address, setAddress] = useState(HOME_URL);
@@ -615,7 +616,7 @@ export default function MiniWaveBrowser() {
     setMediaCandidates([]);
     setAddress(url);
     if (tabId) {
-      setTab(tabId, { url, loading: true, canGoBack: false, canGoForward: false });
+      setTab(tabId, { url, sourceUrl: url, loading: true, canGoBack: false, canGoForward: false });
       setWebKeys((current) => ({ ...current, [tabId]: (current[tabId] ?? 0) + 1 }));
     }
   }, [activeTabId, lang.invalidUrl, setTab, settings.searchEngine]);
@@ -648,6 +649,7 @@ export default function MiniWaveBrowser() {
     const tab: BrowserTab = {
       id: makeId('tab'),
       url: HOME_URL,
+      sourceUrl: HOME_URL,
       title: privateMode ? lang.privateTab : lang.newTab,
       private: privateMode,
       canGoBack: false,
@@ -663,7 +665,7 @@ export default function MiniWaveBrowser() {
   const closeTab = useCallback((id: string) => {
     setTabs((current) => {
       if (current.length === 1) {
-        const replacement: BrowserTab = { id: makeId('tab'), url: HOME_URL, title: lang.newTab, private: false, canGoBack: false, canGoForward: false, loading: true };
+        const replacement: BrowserTab = { id: makeId('tab'), url: HOME_URL, sourceUrl: HOME_URL, title: lang.newTab, private: false, canGoBack: false, canGoForward: false, loading: true };
         setActiveTabId(replacement.id);
         setAddress(HOME_URL);
         return [replacement];
@@ -1143,7 +1145,7 @@ export default function MiniWaveBrowser() {
     <View key={`${tab.id}-${webKeys[tab.id] ?? 0}`} style={[styles.webLayer, tab.id !== activeTabId && styles.hiddenWebLayer]}>
       <WebView
         ref={(ref) => { webRefs.current[tab.id] = ref; }}
-        source={{ uri: tab.url }}
+        source={{ uri: tab.sourceUrl }}
         onLoadProgress={(event) => tab.id === activeTabId && setWebProgress(event.nativeEvent.progress)}
         onLoadStart={() => { if (tab.id === activeTabId) setError(''); setTab(tab.id, { loading: true }); }}
         onLoadEnd={() => { setTab(tab.id, { loading: false }); const pos=pagePositionsRef.current[tab.url]||0; if(pos>0) setTimeout(()=>webRefs.current[tab.id]?.injectJavaScript(`window.scrollTo(0,${Math.round(pos)});true;`),250); }}
