@@ -741,7 +741,7 @@ export default function MiniWaveBrowser() {
             throw new Error('The video file was not saved');
           }
           const contentType = Object.entries(result.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? '';
-          if (result.status >= 400 || /text\\/html|application\\/json/i.test(contentType)) {
+          if (result.status >= 400 || /text\/html|application\/json/i.test(contentType)) {
             await FileSystem.deleteAsync(result.uri, { idempotent: true });
             throw new Error('The source returned a web page instead of a video file');
           }
