@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView, { WebViewMessageEvent, WebViewNavigation } from 'react-native-webview';
 import { useColors } from '@/hooks/useColors';
 import UCMiniTools from '@/components/UCMiniTools';
+import UCMiniHome from '@/components/UCMiniHome';
 import themeColors from '@/constants/colors';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
@@ -470,7 +471,7 @@ export default function MiniWaveBrowser() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [hydrated, setHydrated] = useState(false);
   const [tabs, setTabs] = useState<BrowserTab[]>([
-    { id: makeId('tab'), url: HOME_URL, sourceUrl: HOME_URL, title: 'Google', private: false, canGoBack: false, canGoForward: false, loading: true },
+    { id: makeId('tab'), url: HOME_URL, sourceUrl: HOME_URL, title: 'Google', private: false, canGoBack: false, canGoForward: false, loading: false },
   ]);
   const [activeTabId, setActiveTabId] = useState('');
   const [address, setAddress] = useState(HOME_URL);
@@ -654,7 +655,7 @@ export default function MiniWaveBrowser() {
       private: privateMode,
       canGoBack: false,
       canGoForward: false,
-      loading: true,
+      loading: false,
     };
     setTabs((current) => [...current, tab]);
     setActiveTabId(tab.id);
@@ -665,7 +666,7 @@ export default function MiniWaveBrowser() {
   const closeTab = useCallback((id: string) => {
     setTabs((current) => {
       if (current.length === 1) {
-        const replacement: BrowserTab = { id: makeId('tab'), url: HOME_URL, sourceUrl: HOME_URL, title: lang.newTab, private: false, canGoBack: false, canGoForward: false, loading: true };
+        const replacement: BrowserTab = { id: makeId('tab'), url: HOME_URL, sourceUrl: HOME_URL, title: lang.newTab, private: false, canGoBack: false, canGoForward: false, loading: false };
         setActiveTabId(replacement.id);
         setAddress(HOME_URL);
         return [replacement];
@@ -1156,7 +1157,9 @@ export default function MiniWaveBrowser() {
     if (data) openUrl(data);
   }, [openUrl]);
 
-  const renderWebView = (tab: BrowserTab) => (
+  const renderWebView = (tab: BrowserTab) => {
+    if (tab.url === HOME_URL) return null;
+    return (
     <View key={`${tab.id}-${webKeys[tab.id] ?? 0}`} style={[styles.webLayer, tab.id !== activeTabId && styles.hiddenWebLayer]}>
       <WebView
         ref={(ref) => { webRefs.current[tab.id] = ref; }}
@@ -1200,7 +1203,8 @@ export default function MiniWaveBrowser() {
         onRenderProcessGone={() => { if (tab.id === activeTabId) setError(lang.errorPage); }}
       />
     </View>
-  );
+    );
+  };
 
   const openLibraryItem = (url: string) => {
     setLibraryOpen(false);
@@ -1252,7 +1256,7 @@ export default function MiniWaveBrowser() {
           <View style={[styles.addressShell, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}>
             <Ionicons name={activeTab?.url.startsWith('https') ? 'lock-closed-outline' : 'globe-outline'} size={15} color={displayColors.primary} />
             <TextInput
-              value={editingAddress ? address : (activeTab?.url ?? '')}
+              value={editingAddress ? address : (activeTab?.url === HOME_URL ? '' : (activeTab?.url ?? ''))}
               onChangeText={setAddress}
               onFocus={() => setEditingAddress(true)}
               onBlur={() => setEditingAddress(false)}
@@ -1288,6 +1292,21 @@ export default function MiniWaveBrowser() {
 
       <View style={styles.webArea}>
         {tabs.map(renderWebView)}
+        {activeTab?.url === HOME_URL ? (
+          <UCMiniHome
+            colors={displayColors}
+            language={settings.language}
+            history={activeTab.private ? [] : history}
+            bookmarks={activeTab.private ? [] : bookmarks}
+            downloadsCount={downloads.length}
+            onNavigate={(url) => openUrl(url)}
+            onOpenHistory={() => { setLibraryTab('history'); setLibraryOpen(true); }}
+            onOpenBookmarks={() => { setLibraryTab('bookmarks'); setLibraryOpen(true); }}
+            onOpenDownloads={() => { setLibraryTab('downloads'); setLibraryOpen(true); }}
+            onOpenTools={() => setToolsOpen(true)}
+            onOpenTabs={() => setTabsOpen(true)}
+          />
+        ) : null}
         {error ? (
           <View style={[styles.errorOverlay, { backgroundColor: displayColors.background }]}>
             <Ionicons name="cloud-offline-outline" size={48} color={displayColors.accent} />
