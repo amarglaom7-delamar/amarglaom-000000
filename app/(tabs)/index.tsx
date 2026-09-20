@@ -703,6 +703,7 @@ export default function MiniWaveBrowser() {
           return button;
         }
 
+        var playButton = controlButton('Play/Pause', '▶');
         var shareButton = controlButton('Share', '↗');
         var favoriteButton = controlButton('Favorite', '☆');
         var downloadButton = controlButton('Download', '↓');
@@ -730,6 +731,7 @@ export default function MiniWaveBrowser() {
           var ratio = duration > 0 && isFinite(duration) ? Math.min(1, Math.max(0, mediaElement.currentTime / duration)) : 0;
           progressFill.style.width = (ratio * 100) + '%';
           time.textContent = formatTime(mediaElement.currentTime) + ' / ' + formatTime(duration);
+          playButton.textContent = mediaElement.paused ? '▶' : 'Ⅱ';
           downloadButton.style.opacity = usableMediaUrl(mediaUrl(mediaElement)) ? '.95' : '.35';
         }
         function seek(event) {
@@ -741,6 +743,14 @@ export default function MiniWaveBrowser() {
           showControls();
         }
 
+        playButton.addEventListener('click', function() {
+          try {
+            if (mediaElement.paused) mediaElement.play();
+            else mediaElement.pause();
+            showControls();
+            updateProgress();
+          } catch(e) {}
+        }, true);
         shareButton.addEventListener('click', function() {
           send('share', {url: location.href, title: document.title});
         }, true);
