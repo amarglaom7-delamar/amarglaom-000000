@@ -18,6 +18,7 @@
     },
     "android": {
       "package": "com.miniwave.browser",
+      "permissions": ["RECORD_AUDIO"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#176b68"
@@ -48,6 +49,7 @@
           "color": "#176b68"
         }
       ],
+      "./plugins/withAudioTranslation",
       [
         "expo-video",
         {
