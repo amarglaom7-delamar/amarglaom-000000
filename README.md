@@ -28,3 +28,4 @@ pnpm exec expo export --platform android
 - يتطلب ماسح QR إذن الكاميرا.
 - التنزيلات والمفضلة والسجل تحفظ محليًا داخل التطبيق.
 - لا يوجد اتصال بخادم خارجي مطلوب لتشغيل واجهة المتصفح.
+<!-- Android release build trigger -->
