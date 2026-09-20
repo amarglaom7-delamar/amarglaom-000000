@@ -479,6 +479,7 @@ export default function MiniWaveBrowser() {
   const [mediaTabId, setMediaTabId] = useState('');
   const [internalPlayer, setInternalPlayer] = useState<MediaCandidate | null>(null);
   const [internalPlayerSources, setInternalPlayerSources] = useState<MediaCandidate[]>([]);
+  const [internalPlayerFrame, setInternalPlayerFrame] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [webProgress, setWebProgress] = useState(0);
@@ -539,6 +540,9 @@ export default function MiniWaveBrowser() {
     setMediaCandidates([]);
     setDownloadOptions(null);
     setMediaTabId(activeTabId);
+    setInternalPlayer(null);
+    setInternalPlayerSources([]);
+    setInternalPlayerFrame(null);
   }, [activeTabId]);
 
   useEffect(() => {
@@ -838,6 +842,16 @@ export default function MiniWaveBrowser() {
         const unique = sources.filter((item, index, all) => all.findIndex((candidate) => candidate.url === item.url) === index).slice(0, 8);
         setMediaTabId(tabId);
         setMediaCandidates(unique);
+        if (message.type === 'openPlayer' && unique[0] && message.rect) {
+          setInternalPlayer(unique[0]);
+          setInternalPlayerSources(unique);
+          setInternalPlayerFrame({
+            left: Math.max(0, Number(message.rect.left) || 0),
+            top: Math.max(0, Number(message.rect.top) || 0),
+            width: Math.max(120, Number(message.rect.width) || 0),
+            height: Math.max(90, Number(message.rect.height) || 0),
+          });
+        }
       }
     } catch {
       // Ignore messages from pages that are not JSON.
@@ -1322,7 +1336,7 @@ export default function MiniWaveBrowser() {
         )}
       </View>
 
-      {internalPlayer ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={insets} language={settings.language} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); }} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
+      {internalPlayer && internalPlayerFrame ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={{ top: 0, bottom: 0 }} language={settings.language} frameStyle={{ left: internalPlayerFrame.left, top: internalPlayerFrame.top, width: internalPlayerFrame.width, height: internalPlayerFrame.height }} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setInternalPlayerFrame(null); }} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
 
       <View style={[styles.toolbar, { backgroundColor: displayColors.card, borderTopColor: displayColors.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <IconButton name="arrow-back" label={rtl ? 'السابق' : 'Back'} color={activeTab?.canGoBack ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goBack()} disabled={!activeTab?.canGoBack} />
@@ -1493,6 +1507,7 @@ const styles = StyleSheet.create({
   qualityCard: { margin: 20, borderRadius: 22, padding: 17, gap: 9 },
   qualityRow: { borderWidth: 1, borderRadius: 13, padding: 13, alignItems: 'center', gap: 8 },
   internalPlayerScreen: { flex: 1, backgroundColor: '#000000' },
+  internalPlayerInline: { position: 'absolute', zIndex: 2147483646, elevation: 30, overflow: 'hidden' },
   internalPlayerVideoArea: { flex: 1, backgroundColor: '#000000' },
   internalPlayerVideo: { flex: 1, width: '100%' },
   internalPlayerLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
