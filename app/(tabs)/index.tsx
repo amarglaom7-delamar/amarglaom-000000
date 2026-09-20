@@ -483,6 +483,7 @@ export default function MiniWaveBrowser() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [nightMode, setNightMode] = useState(false);
   const [textOnly, setTextOnly] = useState(false);
+  const lastNavRef = useRef<Record<string,{url:string;at:number}>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabsOpen, setTabsOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -1139,7 +1140,9 @@ export default function MiniWaveBrowser() {
         onLoadProgress={(event) => tab.id === activeTabId && setWebProgress(event.nativeEvent.progress)}
         onLoadStart={() => { if (tab.id === activeTabId) setError(''); setTab(tab.id, { loading: true }); }}
         onLoadEnd={() => setTab(tab.id, { loading: false })}
+        onOpenWindow={(event) => { if (settings.blockTrackers || event.nativeEvent.targetUrl) return; }}
         onNavigationStateChange={(navigation) => {
+          const previous=lastNavRef.current[tab.id]; const now=Date.now(); if(previous && previous.url===navigation.url && now-previous.at<700) return; lastNavRef.current[tab.id]={url:navigation.url,at:now};
           setTab(tab.id, { url: navigation.url, title: navigation.title || navigation.url, canGoBack: navigation.canGoBack, canGoForward: navigation.canGoForward, loading: false });
           if (tab.id === activeTabId) setAddress(navigation.url);
           addHistory(navigation, tab.private);
@@ -1149,7 +1152,10 @@ export default function MiniWaveBrowser() {
         onMessage={(event) => onWebMessage(event, tab.id)}
         onFileDownload={(event) => void startDownload(event.nativeEvent.downloadUrl)}
         onShouldStartLoadWithRequest={(request) => {
+          const u=request.url.toLowerCase();
           if (settings.blockTrackers && isBlockedHost(request.url)) return false;
+          if (/^(intent:|market:|mailto:|tel:|sms:|javascript:)/.test(u)) return false;
+          if (/popup|popunder|doubleclick|googlesyndication|adservice|adnxs|exoclick|onclickads|propellerads|trafficjunky/.test(u)) return false;
           return true;
         }}
         injectedJavaScript={injectedJavaScript}
@@ -1161,7 +1167,8 @@ export default function MiniWaveBrowser() {
         allowsFullscreenVideo
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
-        setSupportMultipleWindows={false}
+        setSupportMultipleWindows={true}
+        javaScriptCanOpenWindowsAutomatically={false}
         originWhitelist={['http://*', 'https://*', 'file://*', 'about:blank']}
         startInLoadingState
         renderLoading={() => <View style={[styles.webLoading, { backgroundColor: displayColors.background }]}><ActivityIndicator color={displayColors.primary} /></View>}
