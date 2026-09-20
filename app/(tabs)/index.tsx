@@ -323,6 +323,7 @@ function InternalVideoPlayer({
   onShare,
   onFavorite,
   onMinimize,
+  minimized,
 }: {
   candidate: MediaCandidate;
   sources: MediaCandidate[];
@@ -333,6 +334,7 @@ function InternalVideoPlayer({
   onShare: () => void;
   onFavorite: () => void;
   onMinimize: () => void;
+  minimized: boolean;
 }) {
   const isHls = /\.m3u8(?:$|\?)/i.test(candidate.url);
   const source = useMemo(() => isHls ? { uri: candidate.url, contentType: 'hls' as const } : { uri: candidate.url, useCaching: true }, [candidate.url, isHls]);
@@ -414,14 +416,14 @@ function InternalVideoPlayer({
   };
 
   return (
-    <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.internalPlayerScreen}>
+    <View style={minimized ? styles.floatingPlayer : styles.internalPlayerScreen}>
         <StatusBar style="light" hidden={false} />
-        <Pressable style={styles.internalPlayerVideoArea} onPress={handlePlayerTap} onLongPress={handleLongPress} onPressOut={releaseLongPress}>
+        <Pressable style={minimized ? styles.floatingPlayerBody : styles.internalPlayerVideoArea} onPress={minimized ? () => onMinimize() : handlePlayerTap} onLongPress={minimized ? undefined : handleLongPress} onPressOut={minimized ? undefined : releaseLongPress}>
           <VideoView player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
           {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
           {status === 'error' ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
-          {showControls ? (
+          {minimized ? <View style={styles.floatingPlayerControls}><Text numberOfLines={1} style={styles.floatingPlayerTitle}>{title}</Text><Pressable onPress={(event) => { event.stopPropagation(); togglePlay(); }}><Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" /></Pressable><Pressable onPress={(event) => { event.stopPropagation(); onClose(); }}><Ionicons name="close" size={19} color="#fff" /></Pressable></View> : null}
+          {!minimized && showControls ? (
             <View pointerEvents="box-none" style={[styles.internalPlayerOverlay, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
               <View style={styles.internalPlayerTopBar}>
                 <Pressable onPress={onClose} hitSlop={10} style={styles.internalPlayerTopButton}><Ionicons name="arrow-back" size={24} color="#ffffff" /></Pressable>
@@ -451,7 +453,6 @@ function InternalVideoPlayer({
           ) : null}
         </Pressable>
       </View>
-    </Modal>
   );
 }
 
@@ -482,7 +483,6 @@ export default function MiniWaveBrowser() {
   const [internalPlayer, setInternalPlayer] = useState<MediaCandidate | null>(null);
   const [internalPlayerSources, setInternalPlayerSources] = useState<MediaCandidate[]>([]);
   const [playerMinimized, setPlayerMinimized] = useState(false);
-  const floatingPlayerRef = useRef<any>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [webProgress, setWebProgress] = useState(0);
@@ -1222,16 +1222,7 @@ export default function MiniWaveBrowser() {
         )}
       </View>
 
-      {internalPlayer && !playerMinimized ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={insets} language={settings.language} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setPlayerMinimized(false); }} onMinimize={() => setPlayerMinimized(true)} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
-      {internalPlayer && playerMinimized ? <View style={[styles.floatingPlayer, { bottom: Math.max(insets.bottom, 8) + 64, right: 12 }]}>
-        <Pressable style={styles.floatingPlayerBody} onPress={() => setPlayerMinimized(false)}>
-          <VideoView player={floatingPlayerRef.current!} style={styles.floatingPlayerVideo} nativeControls={false} contentFit="contain" />
-          <View style={styles.floatingPlayerControls}>
-            <Text numberOfLines={1} style={styles.floatingPlayerTitle}>{internalPlayer.label || 'Video'}</Text>
-            <Pressable onPress={() => { setInternalPlayer(null); setInternalPlayerSources([]); setPlayerMinimized(false); }}><Ionicons name="close" size={20} color="#fff" /></Pressable>
-          </View>
-        </Pressable>
-      </View> : null}
+      {internalPlayer ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={insets} language={settings.language} minimized={playerMinimized} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setPlayerMinimized(false); }} onMinimize={() => setPlayerMinimized((value) => !value)} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
 
       <View style={[styles.toolbar, { backgroundColor: displayColors.card, borderTopColor: displayColors.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <IconButton name="arrow-back" label={rtl ? 'السابق' : 'Back'} color={activeTab?.canGoBack ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goBack()} disabled={!activeTab?.canGoBack} />
