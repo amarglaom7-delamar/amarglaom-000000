@@ -328,7 +328,6 @@ function InternalVideoPlayer({
   sources: MediaCandidate[];
   insets: { top: number; bottom: number };
   language: Language;
-  frameStyle?: any;
   onClose: () => void;
   onDownload: (url: string, name?: string) => void;
   onShare: () => void;
@@ -801,6 +800,7 @@ export default function MiniWaveBrowser() {
         url?: string;
         title?: string;
         sources?: MediaCandidate[];
+        rect?: { left: number; top: number; width: number; height: number };
       };
       if (message.type === 'videoRect' && message.rect && internalPlayer) {
         setInternalPlayerFrame({
@@ -864,7 +864,7 @@ export default function MiniWaveBrowser() {
     } catch {
       // Ignore messages from pages that are not JSON.
     }
-  }, [activeTabId, lang.downloadVideo, startDownload, toggleBookmark]);
+  }, [activeTabId, internalPlayer, lang.downloadVideo, startDownload, toggleBookmark]);
 
   useEffect(() => {
     const speechSubscription = audioTranslationEvents.addListener('onSpeechResult', (event: { text?: string; language?: string }) => {
