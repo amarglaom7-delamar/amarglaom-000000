@@ -533,7 +533,7 @@ export default function MiniWaveBrowser() {
         if (storedHistory) setHistory(JSON.parse(storedHistory) as HistoryEntry[]);
         if (storedBookmarks) setBookmarks(JSON.parse(storedBookmarks) as Bookmark[]);
         if (storedDownloads) setDownloads(JSON.parse(storedDownloads) as DownloadEntry[]);
-        if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>) });
+        if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>), blockTrackers: true });
       } catch {
         setNotice(lang.offline);
       } finally {
