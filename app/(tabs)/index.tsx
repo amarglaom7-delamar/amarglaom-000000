@@ -92,20 +92,43 @@ const defaultSettings: Settings = {
   searchEngine: DEFAULT_SEARCH_ENGINE,
   privateDefault: false,
   dataSaver: false,
-  blockTrackers: false,
+  blockTrackers: true,
   notifications: false,
 };
 
 const knownTrackers = [
-  'doubleclick.net',
-  'googlesyndication.com',
-  'google-analytics.com',
-  'connect.facebook.net',
-  'adnxs.com',
-  'adsrvr.org',
-  'scorecardresearch.com',
-  'hotjar.com',
+  'doubleclick.net','googlesyndication.com','googleadservices.com','google-analytics.com',
+  'googletagmanager.com','adservice.google.com','connect.facebook.net','adnxs.com','adsrvr.org',
+  'scorecardresearch.com','hotjar.com','taboola.com','outbrain.com','criteo.com','criteo.net',
+  'amazon-adsystem.com','adsafeprotected.com','adform.net','rubiconproject.com','pubmatic.com',
+  'openx.net','casalemedia.com','33across.com','indexww.com','sharethrough.com','smartadserver.com',
+  'yieldmo.com','smaato.net','inmobi.com','applovin.com','vungle.com','moatads.com','quantserve.com',
+  'demdex.net','everesttech.net','adsymptotic.com','mathtag.com','rlcdn.net','krxd.net',
+  'exoclick.com','trafficjunky.com','propellerads.com','onclickads.net','popads.net','popcash.net',
+  'adcash.com','adsterra.com','mgid.com','revcontent.com','zemanta.com','imrworldwide.com',
+  'nr-data.net','mixpanel.com','segment.io','clarity.ms','mouseflow.com','fullstory.com',
+  'inspectlet.com','logrocket.com','newrelic.com'
 ];
+
+const blockedUrlPatterns = [
+  /(^|[._\/-])(ads?|adserver|advert|advertising|banner|banners|doubleclick|googlesyndication|googleadservices)([._/?-]|$)/i,
+  /(^|[._\/-])(tracking|tracker|analytics|telemetry|pixel|beacon)([._/?-]|$)/i,
+  /(^|[._\/-])(popunder|popup|popads|popcash|onclickads|exoclick|trafficjunky|propellerads)([._/?-]|$)/i,
+  /(^|[._\/-])(prebid|bidder|bidding|rtb|vast|vpaid)([._/?-]|$)/i,
+  /(^|[._\/-])(taboola|outbrain|criteo|rubiconproject|pubmatic|openx|adform)([._/?-]|$)/i,
+];
+
+function isBlockedHost(url: string) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const full = host + parsed.pathname + parsed.search;
+    return knownTrackers.some((tracker) => host === tracker || host.endsWith('.' + tracker)) ||
+      blockedUrlPatterns.some((pattern) => pattern.test(full));
+  } catch {
+    return blockedUrlPatterns.some((pattern) => pattern.test(url));
+  }
+}
 
 const t = {
   ar: {
@@ -897,6 +920,55 @@ export default function MiniWaveBrowser() {
     (function() {
       var __miniwaveInternalVideo = null;
       var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
+      var adBlockEnabled = ${settings.blockTrackers ? 'true' : 'false'};
+      var adUrlPatterns = [
+        /(^|[._\\/-])(ads?|adserver|advert|advertising|banner|doubleclick|googlesyndication|googleadservices)([._/?\\-]|$)/i,
+        /(^|[._\\/-])(tracking|tracker|analytics|telemetry|pixel|beacon)([._/?\\-]|$)/i,
+        /(^|[._\\/-])(popunder|popup|popads|popcash|onclickads|exoclick|trafficjunky|propellerads)([._/?\\-]|$)/i,
+        /(^|[._\\/-])(taboola|outbrain|criteo|rubiconproject|pubmatic|openx|adform)([._/?\\-]|$)/i
+      ];
+      var adHosts = ['doubleclick.net','googlesyndication.com','googleadservices.com','adnxs.com','adsrvr.org',
+        'taboola.com','outbrain.com','criteo.com','criteo.net','amazon-adsystem.com','adform.net',
+        'rubiconproject.com','pubmatic.com','openx.net','exoclick.com','trafficjunky.com',
+        'propellerads.com','popads.net','popcash.net','adcash.com','adsterra.com','mgid.com',
+        'revcontent.com','smartadserver.com','inmobi.com','applovin.com','unityads.unity3d.com'];
+      function isAdUrl(url) {
+        if (!adBlockEnabled || !url) return false;
+        try {
+          var parsed = new URL(url, location.href);
+          var host = parsed.hostname.toLowerCase();
+          var full = host + parsed.pathname + parsed.search;
+          return adHosts.some(function(item) { return host === item || host.endsWith('.' + item); }) ||
+            adUrlPatterns.some(function(pattern) { return pattern.test(full); });
+        } catch (e) { return false; }
+      }
+      function hideAdElement(element) {
+        if (!element || element === document.body || element === document.documentElement) return;
+        try { element.style.setProperty('display','none','important'); element.style.setProperty('visibility','hidden','important'); element.setAttribute('aria-hidden','true'); } catch (e) {}
+      }
+      function scanAds(root) {
+        if (!adBlockEnabled || !root || !root.querySelectorAll) return;
+        root.querySelectorAll('iframe,script,img,a,link').forEach(function(node) {
+          var url = node.src || node.href || '';
+          if (isAdUrl(url)) {
+            var wrapper = node.closest('[class*="ad"],[id*="ad"],[class*="banner"],[id*="banner"]');
+            hideAdElement(wrapper || node);
+          }
+        });
+      }
+      function installAdShield() {
+        if (!adBlockEnabled) return;
+        var style = document.createElement('style');
+        style.id = 'miniwave-ad-shield';
+        style.textContent = '[id^="ad-"],[id*="-ad-"],[id$="-ad"],[id*="advert"],[class^="ad-"],[class*=" ad-"],[class*="advert"],[class*="banner-ad"],[class*="popunder"],[class*="popup-ad"],[data-ad],[data-ad-slot],[data-advertisement]{display:none!important;visibility:hidden!important}';
+        (document.head || document.documentElement).appendChild(style);
+        scanAds(document);
+        new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) { mutation.addedNodes.forEach(function(node) { if (node.nodeType === 1) scanAds(node); }); });
+        }).observe(document.documentElement,{childList:true,subtree:true});
+        setInterval(function(){ scanAds(document); },1800);
+      }
+      installAdShield();
       var script = document.createElement('style');
       script.innerHTML = dataSaver ? 'img, picture, video, iframe[src*="ads"] { opacity: .88; }' : '';
       document.documentElement.appendChild(script);
