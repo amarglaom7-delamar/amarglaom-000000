@@ -340,6 +340,8 @@ function InternalVideoPlayer({
   const [speed, setSpeed] = useState(1);
   const [sourceIndex, setSourceIndex] = useState(0);
   const [progressWidth, setProgressWidth] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const lastTapRef = useRef({ time: 0, x: 0 });
   const duration = Number.isFinite(player.duration) ? player.duration : 0;
   const sourceChoices = sources.length > 1 ? sources : [];
   const title = candidate.label || 'Video';
@@ -355,6 +357,36 @@ function InternalVideoPlayer({
 
   const toggleControls = () => setShowControls((value) => !value);
   const togglePlay = () => (isPlaying ? player.pause() : player.play());
+  const handlePlayerTap = (event: any) => {
+    const now = Date.now();
+    const x = Number(event.nativeEvent.locationX || 0);
+    const previous = lastTapRef.current;
+    if (now - previous.time < 280) {
+      const delta = x - previous.x;
+      player.seekBy(delta < 0 ? -10 : 10);
+      setShowControls(true);
+      lastTapRef.current = { time: 0, x: 0 };
+      return;
+    }
+    lastTapRef.current = { time: now, x };
+    toggleControls();
+  };
+  const handleLongPress = () => {
+    setSpeed(2);
+    player.playbackRate = 2;
+    if (!isPlaying) player.play();
+  };
+  const releaseLongPress = () => {
+    if (speed === 2) {
+      setSpeed(1);
+      player.playbackRate = 1;
+    }
+  };
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    player.muted = next;
+  };
   const changeSpeed = () => {
     const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
     setSpeed(next);
@@ -378,7 +410,7 @@ function InternalVideoPlayer({
     <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.internalPlayerScreen}>
         <StatusBar style="light" hidden={false} />
-        <Pressable style={styles.internalPlayerVideoArea} onPress={toggleControls}>
+        <Pressable style={styles.internalPlayerVideoArea} onPress={handlePlayerTap} onLongPress={handleLongPress} onPressOut={releaseLongPress}>
           <VideoView player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
           {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
           {status === 'error' ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
@@ -399,9 +431,11 @@ function InternalVideoPlayer({
                   <Pressable onPress={() => player.seekBy(10)} style={styles.internalPlayerControl}><Ionicons name="play-forward" size={21} color="#ffffff" /></Pressable>
                   <Text style={styles.internalPlayerTime}>{formatPlayerTime(currentTime)} / {formatPlayerTime(duration)}</Text>
                   <Pressable onPress={changeSpeed} style={styles.internalPlayerSpeed}><Text style={styles.internalPlayerSpeedText}>{speed}x</Text></Pressable>
+                  <Pressable onPress={toggleMute} style={styles.internalPlayerControl}><Ionicons name={muted ? 'volume-mute-outline' : 'volume-high-outline'} size={21} color="#ffffff" /></Pressable>
                   <Pressable onPress={() => onDownload(candidate.url, 'video-' + Date.now())} style={styles.internalPlayerControl}><Ionicons name="download-outline" size={22} color="#ffffff" /></Pressable>
                   <Pressable onPress={onFavorite} style={styles.internalPlayerControl}><Ionicons name="star-outline" size={21} color="#ffffff" /></Pressable>
                   <Pressable onPress={() => void player.startPictureInPicture()} style={styles.internalPlayerControl}><Ionicons name="albums-outline" size={21} color="#ffffff" /></Pressable>
+                  <Pressable onPress={() => void player.enterFullscreen()} style={styles.internalPlayerControl}><Ionicons name="expand-outline" size={21} color="#ffffff" /></Pressable>
                 </View>
                 {sourceChoices.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.internalPlayerSources}>{sourceChoices.map((item, index) => <Pressable key={item.url} onPress={() => chooseSource(index)} style={[styles.internalPlayerSourceChip, sourceIndex === index && styles.internalPlayerSourceChipActive]}><Text style={styles.internalPlayerSourceText}>{item.label || (index + 1) + 'P'}</Text></Pressable>)}</ScrollView> : null}
               </View>
