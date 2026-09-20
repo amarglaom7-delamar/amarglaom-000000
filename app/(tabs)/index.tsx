@@ -1440,7 +1440,15 @@ export default function MiniWaveBrowser() {
           </View>
         ) : null}
         {mediaTabId === activeTabId && mediaCandidates.length > 0 && (
-          <Pressable accessibilityRole="button" accessibilityLabel={lang.downloadVideo} onPress={() => void startDownload(mediaCandidates[0].url, `video-${Date.now()}${fileNameFromUrl(mediaCandidates[0].url).match(/(\.[a-z0-9]{2,5})$/i)?.[1] ?? '.mp4'}`)} style={[styles.mediaDownload, { backgroundColor: displayColors.accent }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={lang.downloadVideo}
+            onPress={() => {
+              if (mediaCandidates.length > 1) setDownloadOptions(mediaCandidates);
+              else void startDownload(mediaCandidates[0].url, `video-${Date.now()}${fileNameFromUrl(mediaCandidates[0].url).match(/(\\.[a-z0-9]{2,5})$/i)?.[1] ?? '.mp4'}`);
+            }}
+            style={[styles.mediaDownload, { backgroundColor: displayColors.accent }]}
+          >
             <Ionicons name="download-outline" size={18} color={displayColors.accentForeground} />
             <Text style={[styles.mediaDownloadText, { color: displayColors.accentForeground }]}>{lang.downloadVideo}</Text>
           </Pressable>
@@ -1454,6 +1462,7 @@ export default function MiniWaveBrowser() {
         <IconButton name="arrow-forward" label={rtl ? 'التالي' : 'Forward'} color={activeTab?.canGoForward ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goForward()} disabled={!activeTab?.canGoForward} />
         <IconButton name="refresh" label={rtl ? 'تحديث' : 'Refresh'} color={displayColors.foreground} onPress={() => activeTab && webRefs.current[activeTab.id]?.reload()} />
         <IconButton name="share-outline" label={lang.share} color={displayColors.foreground} onPress={() => void shareCurrent()} />
+        <IconButton name="time-outline" label={lang.history} color={displayColors.foreground} onPress={() => { setLibraryTab('history'); setLibraryOpen(true); }} />
         <IconButton name="book-outline" label={lang.bookmarks} color={displayColors.foreground} onPress={() => { setLibraryTab('bookmarks'); setLibraryOpen(true); }} />
         <IconButton name="download-outline" label={lang.downloads} color={displayColors.foreground} onPress={() => { setLibraryTab('downloads'); setLibraryOpen(true); }} />
       </View>
