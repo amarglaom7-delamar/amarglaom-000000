@@ -335,7 +335,7 @@ function InternalVideoPlayer({
   });
   const { currentTime = 0 } = useEvent(player, 'timeUpdate', { currentTime: 0 });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
-  const { status, error: playerError } = useEvent(player, 'statusChange', { status: player.status, error: undefined });
+  const { status } = useEvent(player, 'statusChange', { status: player.status, error: null });
   const [showControls, setShowControls] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [sourceIndex, setSourceIndex] = useState(0);
@@ -374,7 +374,7 @@ function InternalVideoPlayer({
         <Pressable style={styles.internalPlayerVideoArea} onPress={toggleControls}>
           <VideoView player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
           {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
-          {status === 'error' || playerError ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
+          {status === 'error' ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
           {showControls ? (
             <View pointerEvents="box-none" style={[styles.internalPlayerOverlay, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
               <View style={styles.internalPlayerTopBar}>
