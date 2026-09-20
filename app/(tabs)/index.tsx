@@ -28,6 +28,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView, { WebViewMessageEvent, WebViewNavigation } from 'react-native-webview';
 import { useColors } from '@/hooks/useColors';
+import audioTranslationModule, { audioTranslationEvents } from '@/modules/audio-translation/src/AudioTranslationModule';
 import themeColors from '@/constants/colors';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
@@ -807,6 +808,28 @@ export default function MiniWaveBrowser() {
       if (message.type === 'back') {
         webRefs.current[tabId]?.goBack();
       }
+      if (message.type === 'voiceTranslateStart') {
+        if (Platform.OS !== 'android') {
+          setNotice('الترجمة الصوتية متاحة على Android فقط.');
+        } else {
+          void (async () => {
+            try {
+              const { PermissionsAndroid } = require('react-native');
+              const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+              if (result !== PermissionsAndroid.RESULTS.GRANTED) {
+                setNotice('يجب السماح بالميكروفون لتشغيل التقاط صوت الفيديو.');
+                return;
+              }
+              await audioTranslationModule.start();
+            } catch (error) {
+              setNotice(error instanceof Error ? error.message : 'تعذر بدء الترجمة الصوتية.');
+            }
+          })();
+        }
+      }
+      if (message.type === 'voiceTranslateStop') {
+        try { audioTranslationModule.stop(); } catch {}
+      }
       if (message.type === 'media' || message.type === 'openPlayer') {
         const sources = (message.sources ?? [])
           .filter((item) => item.url && /^https?:\/\//i.test(item.url))
@@ -824,6 +847,33 @@ export default function MiniWaveBrowser() {
       // Ignore messages from pages that are not JSON.
     }
   }, [activeTabId, lang.downloadVideo, startDownload, toggleBookmark]);
+
+  useEffect(() => {
+    const speechSubscription = audioTranslationEvents.addListener('onSpeechResult', (event: { text?: string; language?: string }) => {
+      const text = event?.text?.trim();
+      if (!text || !activeTabId) return;
+      void (async () => {
+        try {
+          const endpoint = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ar&dt=t&q=' + encodeURIComponent(text);
+          const response = await fetch(endpoint);
+          const data = await response.json();
+          const translated = Array.isArray(data?.[0]) ? data[0].map((part: any) => Array.isArray(part) ? part[0] : '').join('') : '';
+          if (!translated) return;
+          const js = `window.dispatchEvent(new CustomEvent('miniwave-audio-translation',{detail:${JSON.stringify(translated)}})); true;`;
+          webRefs.current[activeTabId]?.injectJavaScript(js);
+        } catch {}
+      })();
+    });
+    const stateSubscription = audioTranslationEvents.addListener('onState', (event: { state?: string; message?: string }) => {
+      if (event?.state === 'error' && event.message) setNotice(event.message);
+      if (event?.state === 'started') setNotice('بدأت الترجمة من صوت الفيديو.');
+      if (event?.state === 'stopped') setNotice('تم إيقاف الترجمة الصوتية.');
+    });
+    return () => {
+      speechSubscription.remove();
+      stateSubscription.remove();
+    };
+  }, [activeTabId]);
 
   const injectedJavaScript = useMemo(() => `
     (function() {
@@ -954,6 +1004,65 @@ export default function MiniWaveBrowser() {
         var downloadButton = controlButton('Download', '↓');
         var backButton = controlButton('Back', '‹');
         var fullscreenButton = controlButton('Fullscreen', '⛶');
+        var voiceTranslateButton = controlButton('ترجمة صوت الفيديو', '🎙');
+        voiceTranslateButton.style.fontSize = '11px';
+        voiceTranslateButton.style.fontWeight = '700';
+        voiceTranslateButton.setAttribute('data-miniwave-voice-translation', '1');
+
+        var voiceTranslationId = 'voice-' + Math.random().toString(36).slice(2);
+        var voiceTranslationEnabled = false;
+        var voiceOverlay = document.createElement('div');
+        voiceOverlay.setAttribute('data-miniwave-voice-overlay', '1');
+        voiceOverlay.style.cssText = [
+          'position:absolute',
+          'left:8px',
+          'right:8px',
+          'bottom:50px',
+          'padding:8px 12px',
+          'box-sizing:border-box',
+          'border-radius:10px',
+          'background:rgba(0,0,0,.86)',
+          'color:#fff',
+          'z-index:45',
+          'display:none',
+          'font:15px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
+          'font-weight:700',
+          'line-height:1.45',
+          'text-align:center',
+          'direction:rtl'
+        ].join(';');
+        shell.appendChild(voiceOverlay);
+
+        voiceTranslateButton.addEventListener('click', function(event) {
+          event.preventDefault();
+          event.stopPropagation();
+          showControls();
+          voiceTranslationEnabled = !voiceTranslationEnabled;
+          if (voiceTranslationEnabled) {
+            window.__miniwaveVoiceTargetId = voiceTranslationId;
+            voiceTranslateButton.style.opacity = '1';
+            send('voiceTranslateStart', { voiceId: voiceTranslationId });
+          } else {
+            if (window.__miniwaveVoiceTargetId === voiceTranslationId) window.__miniwaveVoiceTargetId = null;
+            voiceTranslateButton.style.opacity = '.75';
+            voiceOverlay.style.display = 'none';
+            send('voiceTranslateStop', { voiceId: voiceTranslationId });
+          }
+        }, true);
+
+        window.addEventListener('miniwave-audio-translation', function(event) {
+          if (!voiceTranslationEnabled || window.__miniwaveVoiceTargetId !== voiceTranslationId) return;
+          var translated = event && event.detail ? String(event.detail) : '';
+          if (!translated) return;
+          voiceOverlay.textContent = translated;
+          voiceOverlay.style.display = 'block';
+          clearTimeout(voiceOverlay._hideTimer);
+          voiceOverlay._hideTimer = setTimeout(function() {
+            if (voiceTranslationEnabled) voiceOverlay.style.display = 'none';
+          }, 5200);
+        });
+
+
         shell.appendChild(progress);
         shell.appendChild(controls);
 
@@ -1411,4 +1520,6 @@ const styles = StyleSheet.create({
   internalPlayerSourceChipActive: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
   internalPlayerSourceText: { color: '#ffffff', fontSize: 10, fontWeight: '800' },
 });
+
+
 
