@@ -17,6 +17,7 @@ import {
   Pressable,
   ScrollView,
   Share,
+  Linking,
   StyleSheet,
   Switch,
   Text,
@@ -111,6 +112,13 @@ const knownTrackers = [
   'adsrvr.org',
   'scorecardresearch.com',
   'hotjar.com',
+  'taboola.com',
+  'outbrain.com',
+  'criteo.com',
+  'amazon-adsystem.com',
+  'adsafeprotected.com',
+  'adform.net',
+  'rubiconproject.com',
 ];
 
 const t = {
@@ -1201,6 +1209,9 @@ export default function MiniWaveBrowser() {
         allowsFullscreenVideo
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
+        allowFileAccess
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
         userAgent={settings.desktopMode ? 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36' : undefined}
         setSupportMultipleWindows={true}
         javaScriptCanOpenWindowsAutomatically={false}
@@ -1227,6 +1238,23 @@ export default function MiniWaveBrowser() {
     if (!item.localUri || !(await Sharing.isAvailableAsync())) return;
     await Sharing.shareAsync(item.localUri);
   };
+  const openDownload = async (item: DownloadEntry) => {
+    if (!item.localUri) return;
+    try { await Linking.openURL(item.localUri); } catch { setNotice(lang.downloadFailed); }
+  };
+  const retryDownload = async (item: DownloadEntry) => {
+    if (item.status !== 'failed') return;
+    setDownloads((current) => current.filter((entry) => entry.id !== item.id));
+    await startDownload(item.url, item.name);
+  };
+  const translateCurrentPage = () => {
+    if (!activeTab || activeTab.url === HOME_URL || !/^https?:\/\//i.test(activeTab.url)) {
+      setNotice(lang.invalidUrl);
+      return;
+    }
+    setToolsOpen(false);
+    openUrl(`https://translate.google.com/translate?sl=auto&tl=${settings.language}&u=${encodeURIComponent(activeTab.url)}`);
+  };
 
   const requestNotifications = async (value: boolean) => {
     if (!value || Platform.OS === 'web') {
@@ -1240,7 +1268,11 @@ export default function MiniWaveBrowser() {
   const resetData = () => {
     Alert.alert(lang.reset, lang.resetDetail, [
       { text: lang.cancel, style: 'cancel' },
-      { text: lang.delete, style: 'destructive', onPress: () => { setHistory([]); setBookmarks([]); setDownloads([]); setNotice(lang.copied); } },
+      { text: lang.delete, style: 'destructive', onPress: async () => {
+        setHistory([]); setBookmarks([]); setDownloads([]); setSavedPages([]);
+        await Promise.all([AsyncStorage.removeItem(STORAGE.history), AsyncStorage.removeItem(STORAGE.bookmarks), AsyncStorage.removeItem(STORAGE.downloads), AsyncStorage.removeItem(STORAGE.savedPages), AsyncStorage.removeItem('@miniwave/pagePositions')]);
+        setNotice(lang.copied);
+      } },
     ]);
   };
 
@@ -1377,7 +1409,7 @@ export default function MiniWaveBrowser() {
             <ScrollView contentContainerStyle={styles.sheetList}>
               {libraryTab === 'history' && (history.length ? history.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="time-outline" size={21} color={displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View></Pressable>) : <Empty label={lang.noHistory} colors={displayColors} />)}
               {libraryTab === 'bookmarks' && (bookmarks.length ? bookmarks.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="star" size={21} color={displayColors.accent} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View><IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setBookmarks((current) => current.filter((entry) => entry.id !== item.id))} /></Pressable>) : <Empty label={lang.noBookmarks} colors={displayColors} />)}
-              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{(item.status === 'downloading' || item.status === 'paused') && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'downloading' && <IconButton name="pause-circle-outline" label={lang.downloadPaused} color={displayColors.primary} onPress={() => void pauseDownload(item.id)} />}{item.status === 'paused' && <IconButton name="play-circle-outline" label={lang.downloadResumed} color={displayColors.primary} onPress={() => void resumeDownload(item.id)} />}{item.status === 'done' && <IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} />}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setDownloads((current) => current.filter((entry) => entry.id !== item.id))} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
+              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{(item.status === 'downloading' || item.status === 'paused') && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'downloading' && <IconButton name="pause-circle-outline" label={lang.downloadPaused} color={displayColors.primary} onPress={() => void pauseDownload(item.id)} />}{item.status === 'paused' && <IconButton name="play-circle-outline" label={lang.downloadResumed} color={displayColors.primary} onPress={() => void resumeDownload(item.id)} />}{item.status === 'failed' && <IconButton name="refresh" label={lang.retry} color={displayColors.primary} onPress={() => void retryDownload(item)} />}{item.status === 'done' && <><IconButton name="open-outline" label={lang.open} color={displayColors.primary} onPress={() => void openDownload(item)} /><IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} /></>}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setDownloads((current) => current.filter((entry) => entry.id !== item.id))} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
               {libraryTab === 'videos' && (() => { const vids=downloads.filter(x=>x.status==='done'&&x.localUri&&/\.(mp4|webm|mov|m4v)(\?|$)/i.test(x.url)); return vids.length ? vids.map(item=><Pressable key={item.id} onPress={()=>{setInternalPlayer({url:item.localUri!,label:item.name});setInternalPlayerSources([{url:item.localUri!,label:item.name}]);setLibraryOpen(false);}} style={[styles.libraryCard,{backgroundColor:displayColors.card,borderColor:displayColors.border,flexDirection:rowDirection}]}><Ionicons name="play-circle-outline" size={27} color={displayColors.primary}/><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle,{color:displayColors.foreground,textAlign}]}>{item.name}</Text><Text style={[styles.tabCardUrl,{color:displayColors.mutedForeground,textAlign}]}>محفوظ على الجهاز</Text></View></Pressable>) : <Empty label="لا توجد فيديوهات محفوظة" colors={displayColors}/>; })()}
               {libraryTab === 'savedPages' && (savedPages.length ? savedPages.map(item=><Pressable key={item.id} onPress={()=>{openUrl(item.localUri);setLibraryOpen(false);}} style={[styles.libraryCard,{backgroundColor:displayColors.card,borderColor:displayColors.border,flexDirection:rowDirection}]}><Ionicons name="document-text-outline" size={22} color={displayColors.primary}/><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle,{color:displayColors.foreground,textAlign}]}>{item.title}</Text><Text style={[styles.tabCardUrl,{color:displayColors.mutedForeground,textAlign}]}>نسخة HTML محلية</Text></View><IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={()=>setSavedPages(cur=>cur.filter(x=>x.id!==item.id))}/></Pressable>) : <Empty label="لا توجد صفحات محفوظة" colors={displayColors}/>)} 
             </ScrollView>
@@ -1385,7 +1417,7 @@ export default function MiniWaveBrowser() {
         </View>
       </Modal>
 
-      <UCMiniTools visible={toolsOpen} onClose={()=>setToolsOpen(false)} nightMode={nightMode} textOnly={textOnly} onToggleNight={toggleNight} onToggleText={toggleText} onSavePage={saveCurrentPage} onOpenVideos={()=>{setToolsOpen(false);setLibraryTab('videos');setLibraryOpen(true)}} onOpenSavedPages={()=>{setToolsOpen(false);setLibraryTab('savedPages');setLibraryOpen(true)}} bookmarks={bookmarks} setBookmarks={setBookmarks} onNotice={setNotice}/>
+      <UCMiniTools visible={toolsOpen} onClose={()=>setToolsOpen(false)} nightMode={nightMode} textOnly={textOnly} onToggleNight={toggleNight} onToggleText={toggleText} onSavePage={saveCurrentPage} onOpenVideos={()=>{setToolsOpen(false);setLibraryTab('videos');setLibraryOpen(true)}} onOpenSavedPages={()=>{setToolsOpen(false);setLibraryTab('savedPages');setLibraryOpen(true)}} onTranslatePage={translateCurrentPage} bookmarks={bookmarks} setBookmarks={setBookmarks} onNotice={setNotice}/>
       <Modal visible={settingsOpen} animationType="slide" transparent onRequestClose={() => setSettingsOpen(false)}>
         <View style={[styles.modalBackdrop, { backgroundColor: 'rgba(0,0,0,.52)' }]}>
           <View style={[styles.sheet, { backgroundColor: displayColors.background, paddingBottom: insets.bottom + 12 }]}>
