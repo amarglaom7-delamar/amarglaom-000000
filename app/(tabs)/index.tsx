@@ -322,6 +322,7 @@ function InternalVideoPlayer({
   onDownload,
   onShare,
   onFavorite,
+  onMinimize,
 }: {
   candidate: MediaCandidate;
   sources: MediaCandidate[];
@@ -331,6 +332,7 @@ function InternalVideoPlayer({
   onDownload: (url: string, name?: string) => void;
   onShare: () => void;
   onFavorite: () => void;
+  onMinimize: () => void;
 }) {
   const isHls = /\.m3u8(?:$|\?)/i.test(candidate.url);
   const source = useMemo(() => isHls ? { uri: candidate.url, contentType: 'hls' as const } : { uri: candidate.url, useCaching: true }, [candidate.url, isHls]);
@@ -424,6 +426,7 @@ function InternalVideoPlayer({
               <View style={styles.internalPlayerTopBar}>
                 <Pressable onPress={onClose} hitSlop={10} style={styles.internalPlayerTopButton}><Ionicons name="arrow-back" size={24} color="#ffffff" /></Pressable>
                 <Text numberOfLines={1} style={styles.internalPlayerTitle}>{title}</Text>
+                <Pressable onPress={onMinimize} hitSlop={10} style={styles.internalPlayerTopButton}><Ionicons name="chevron-down" size={25} color="#ffffff" /></Pressable>
                 <Pressable onPress={onShare} hitSlop={10} style={styles.internalPlayerTopButton}><Ionicons name="share-outline" size={22} color="#ffffff" /></Pressable>
               </View>
               <View style={styles.internalPlayerBottom}>
@@ -478,6 +481,8 @@ export default function MiniWaveBrowser() {
   const [mediaTabId, setMediaTabId] = useState('');
   const [internalPlayer, setInternalPlayer] = useState<MediaCandidate | null>(null);
   const [internalPlayerSources, setInternalPlayerSources] = useState<MediaCandidate[]>([]);
+  const [playerMinimized, setPlayerMinimized] = useState(false);
+  const floatingPlayerRef = useRef<any>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [webProgress, setWebProgress] = useState(0);
@@ -1217,7 +1222,16 @@ export default function MiniWaveBrowser() {
         )}
       </View>
 
-      {internalPlayer ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={insets} language={settings.language} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); }} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
+      {internalPlayer && !playerMinimized ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={insets} language={settings.language} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setPlayerMinimized(false); }} onMinimize={() => setPlayerMinimized(true)} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
+      {internalPlayer && playerMinimized ? <View style={[styles.floatingPlayer, { bottom: Math.max(insets.bottom, 8) + 64, right: 12 }]}>
+        <Pressable style={styles.floatingPlayerBody} onPress={() => setPlayerMinimized(false)}>
+          <VideoView player={floatingPlayerRef.current!} style={styles.floatingPlayerVideo} nativeControls={false} contentFit="contain" />
+          <View style={styles.floatingPlayerControls}>
+            <Text numberOfLines={1} style={styles.floatingPlayerTitle}>{internalPlayer.label || 'Video'}</Text>
+            <Pressable onPress={() => { setInternalPlayer(null); setInternalPlayerSources([]); setPlayerMinimized(false); }}><Ionicons name="close" size={20} color="#fff" /></Pressable>
+          </View>
+        </Pressable>
+      </View> : null}
 
       <View style={[styles.toolbar, { backgroundColor: displayColors.card, borderTopColor: displayColors.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <IconButton name="arrow-back" label={rtl ? 'السابق' : 'Back'} color={activeTab?.canGoBack ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goBack()} disabled={!activeTab?.canGoBack} />
@@ -1388,6 +1402,11 @@ const styles = StyleSheet.create({
   qualityCard: { margin: 20, borderRadius: 22, padding: 17, gap: 9 },
   qualityRow: { borderWidth: 1, borderRadius: 13, padding: 13, alignItems: 'center', gap: 8 },
   internalPlayerScreen: { flex: 1, backgroundColor: '#000000' },
+  floatingPlayer: { position: 'absolute', width: 190, height: 116, zIndex: 9999, elevation: 20, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000000', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  floatingPlayerBody: { flex: 1, backgroundColor: '#000000' },
+  floatingPlayerVideo: { flex: 1, width: '100%' },
+  floatingPlayerControls: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 32, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,.78)' },
+  floatingPlayerTitle: { flex: 1, color: '#ffffff', fontSize: 10, fontWeight: '700' },
   internalPlayerVideoArea: { flex: 1, backgroundColor: '#000000' },
   internalPlayerVideo: { flex: 1, width: '100%' },
   internalPlayerLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
