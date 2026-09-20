@@ -28,12 +28,14 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView, { WebViewMessageEvent, WebViewNavigation } from 'react-native-webview';
 import { useColors } from '@/hooks/useColors';
+import UCMiniTools from '@/components/UCMiniTools';
 import themeColors from '@/constants/colors';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 type Language = 'ar' | 'en';
 type SearchEngine = 'google' | 'bing' | 'duckduckgo';
-type LibraryTab = 'history' | 'bookmarks' | 'downloads';
+type LibraryTab = 'history' | 'bookmarks' | 'downloads' | 'videos';
+type SavedPage = { id:string; title:string; url:string; localUri:string; savedAt:number };
 type BrowserTab = {
   id: string;
   url: string;
@@ -82,6 +84,7 @@ const STORAGE = {
   history: '@miniwave/history',
   bookmarks: '@miniwave/bookmarks',
   downloads: '@miniwave/downloads',
+  savedPages: '@miniwave/savedPages',
   settings: '@miniwave/settings',
 };
 
@@ -476,6 +479,10 @@ export default function MiniWaveBrowser() {
   const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>('history');
+  const [savedPages, setSavedPages] = useState<SavedPage[]>([]);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [nightMode, setNightMode] = useState(false);
+  const [textOnly, setTextOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabsOpen, setTabsOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -510,12 +517,14 @@ export default function MiniWaveBrowser() {
       AsyncStorage.getItem(STORAGE.history),
       AsyncStorage.getItem(STORAGE.bookmarks),
       AsyncStorage.getItem(STORAGE.downloads),
+      AsyncStorage.getItem(STORAGE.savedPages),
       AsyncStorage.getItem(STORAGE.settings),
-    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSettings]) => {
+    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSavedPages, storedSettings]) => {
       try {
         if (storedHistory) setHistory(JSON.parse(storedHistory) as HistoryEntry[]);
         if (storedBookmarks) setBookmarks(JSON.parse(storedBookmarks) as Bookmark[]);
         if (storedDownloads) setDownloads(JSON.parse(storedDownloads) as DownloadEntry[]);
+        if (storedSavedPages) setSavedPages(JSON.parse(storedSavedPages) as SavedPage[]);
         if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>) });
       } catch {
         setNotice(lang.offline);
@@ -795,6 +804,12 @@ export default function MiniWaveBrowser() {
     });
   }, [downloads, hydrated]);
 
+  useEffect(()=>{void AsyncStorage.setItem(STORAGE.savedPages,JSON.stringify(savedPages));},[savedPages]);
+  const savePageSnapshot=useCallback(async(html:string,title:string,url:string)=>{try{const safe=title.replace(/[^\w\u0600-\u06ff.-]+/g,'_').slice(0,60)||'page';const uri=`${FileSystem.documentDirectory??FileSystem.cacheDirectory}saved-${Date.now()}-${safe}.html`;await FileSystem.writeAsStringAsync(uri,`<!doctype html><html><head><meta charset="utf-8"><base href="${url}"></head>${html.replace(/^<!doctype[^>]*>/i,'')}</html>`);setSavedPages(cur=>[{id:makeId('page'),title,url,localUri:uri,savedAt:Date.now()},...cur.filter(x=>x.url!==url)].slice(0,50));setNotice('تم حفظ الصفحة على الجهاز');}catch{setNotice('تعذر حفظ الصفحة');}},[]);
+  const saveCurrentPage=useCallback(()=>{webRefs.current[activeTabId]?.injectJavaScript(`(function(){window.ReactNativeWebView.postMessage(JSON.stringify({type:'pageSnapshot',html:document.documentElement.outerHTML,title:document.title||location.href,url:location.href}));true;})();`);setToolsOpen(false);},[activeTabId]);
+  const injectPageMode=useCallback((night:boolean,text:boolean)=>{webRefs.current[activeTabId]?.injectJavaScript(`(function(){var e=document.createEvent('CustomEvent');e.initCustomEvent('miniwave-page-mode',false,false,{night:${night?'true':'false'},textOnly:${text?'true':'false'}});document.dispatchEvent(e);true;})();`);},[activeTabId]);
+  const toggleNight=useCallback(()=>setNightMode(v=>{const n=!v;injectPageMode(n,textOnly);return n}),[injectPageMode,textOnly]);
+  const toggleText=useCallback(()=>setTextOnly(v=>{const n=!v;injectPageMode(nightMode,n);return n}),[injectPageMode,nightMode]);
   const onWebMessage = useCallback((event: WebViewMessageEvent, tabId: string) => {
     if (tabId !== activeTabId) return;
     try {
@@ -803,7 +818,9 @@ export default function MiniWaveBrowser() {
         url?: string;
         title?: string;
         sources?: MediaCandidate[];
+        html?: string;
       };
+      if (message.type === 'pageSnapshot' && message.html) void savePageSnapshot(message.html,message.title||activeTab?.title||'Saved page',message.url||activeTab?.url||'');
       if (message.type === 'download' && message.url) void startDownload(message.url, message.title);
       if (message.type === 'share' && message.url) {
         void Share.share({ message: message.url, title: message.title });
@@ -830,11 +847,12 @@ export default function MiniWaveBrowser() {
     } catch {
       // Ignore messages from pages that are not JSON.
     }
-  }, [activeTabId, lang.downloadVideo, startDownload, toggleBookmark]);
+  }, [activeTabId, activeTab?.title, activeTab?.url, lang.downloadVideo, savePageSnapshot, startDownload, toggleBookmark]);
 
   const injectedJavaScript = useMemo(() => `
     (function() {
       var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
+      var n=${nightMode?'true':'false'},x=${textOnly?'true':'false'};function pm(){var s=document.getElementById('miniwave-page-mode');if(!s){s=document.createElement('style');s.id='miniwave-page-mode';document.documentElement.appendChild(s)}s.textContent=(window.__n?'html,body{background:#111!important;color:#eee!important}a{color:#8ab4f8!important}input,textarea,select,button{background:#222!important;color:#eee!important;border-color:#555!important}img,video{filter:brightness(.82)}':'')+(window.__x?'video,audio,img,picture,iframe,canvas,svg,object,embed{display:none!important}':'')}window.__n=n;window.__x=x;pm();document.addEventListener('miniwave-page-mode',function(e){var d=e.detail||{};window.__n=!!d.night;window.__x=!!d.textOnly;pm()});
       var script = document.createElement('style');
       script.innerHTML = dataSaver ? 'img:not([data-miniwave-loaded]), picture, iframe[src*="ads"] { opacity: .88; }' : '';
       document.documentElement.appendChild(script);
@@ -1104,7 +1122,7 @@ export default function MiniWaveBrowser() {
       setInterval(media, 3500);
       true;
     })();
-  `, [settings.dataSaver]);
+  `, [settings.dataSaver,nightMode,textOnly]);
 
   const activeBookmark = activeTab && !activeTab.private ? bookmarks.some((item) => item.url === activeTab.url) : false;
 
@@ -1252,6 +1270,7 @@ export default function MiniWaveBrowser() {
         <IconButton name="share-outline" label={lang.share} color={displayColors.foreground} onPress={() => void shareCurrent()} />
         <IconButton name="book-outline" label={lang.bookmarks} color={displayColors.foreground} onPress={() => { setLibraryTab('bookmarks'); setLibraryOpen(true); }} />
         <IconButton name="download-outline" label={lang.downloads} color={displayColors.foreground} onPress={() => { setLibraryTab('downloads'); setLibraryOpen(true); }} />
+        <IconButton name="construct-outline" label="أدوات" color={displayColors.foreground} onPress={()=>setToolsOpen(true)} />
       </View>
 
       {notice ? <View style={[styles.notice, { backgroundColor: displayColors.foreground }]}><Text style={[styles.noticeText, { color: displayColors.background }]}>{notice}</Text></View> : null}
@@ -1293,6 +1312,7 @@ export default function MiniWaveBrowser() {
         </View>
       </Modal>
 
+      <UCMiniTools visible={toolsOpen} onClose={()=>setToolsOpen(false)} nightMode={nightMode} textOnly={textOnly} onToggleNight={toggleNight} onToggleText={toggleText} onSavePage={saveCurrentPage} onOpenVideos={()=>{setToolsOpen(false);setLibraryTab('downloads');setLibraryOpen(true)}} onOpenSavedPages={()=>{setToolsOpen(false);setLibraryTab('downloads');setLibraryOpen(true)}} bookmarks={bookmarks} setBookmarks={setBookmarks} onNotice={setNotice}/>
       <Modal visible={settingsOpen} animationType="slide" transparent onRequestClose={() => setSettingsOpen(false)}>
         <View style={[styles.modalBackdrop, { backgroundColor: 'rgba(0,0,0,.52)' }]}>
           <View style={[styles.sheet, { backgroundColor: displayColors.background, paddingBottom: insets.bottom + 12 }]}>
