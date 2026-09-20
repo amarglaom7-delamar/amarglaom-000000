@@ -67,6 +67,7 @@ type Settings = {
   dataSaver: boolean;
   blockTrackers: boolean;
   notifications: boolean;
+  desktopMode: boolean;
 };
 type MediaCandidate = { url: string; label: string; isPlaying?: boolean };
 
@@ -98,6 +99,7 @@ const defaultSettings: Settings = {
   dataSaver: false,
   blockTrackers: false,
   notifications: false,
+  desktopMode: false,
 };
 
 const knownTrackers = [
@@ -159,6 +161,8 @@ const t = {
     notificationDetail: 'إشعار محلي عند اكتمال الملف',
     privateDefault: 'فتح التبويبات الجديدة كخاصة',
     privateDetail: 'لا تحفظ السجل أو المفضلة في التصفح الخاص',
+    desktopMode: 'وضع سطح المكتب',
+    desktopModeDetail: 'فتح المواقع بنسخة سطح المكتب',
     about: 'حول عمار جلعوم',
     reset: 'إعادة ضبط البيانات',
     resetDetail: 'حذف السجل والمفضلة والتنزيلات',
@@ -223,6 +227,8 @@ const t = {
     notificationDetail: 'Show a local notification when files finish',
     privateDefault: 'Open new tabs privately',
     privateDetail: 'Private tabs do not save history or bookmarks',
+    desktopMode: 'Desktop mode',
+    desktopModeDetail: 'Request desktop versions of websites',
     about: 'About عمار جلعوم',
     reset: 'Reset data',
     resetDetail: 'Delete history, bookmarks, and downloads',
@@ -1195,6 +1201,7 @@ export default function MiniWaveBrowser() {
         allowsFullscreenVideo
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
+        userAgent={settings.desktopMode ? 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36' : undefined}
         setSupportMultipleWindows={true}
         javaScriptCanOpenWindowsAutomatically={false}
         originWhitelist={['http://*', 'https://*', 'file://*', 'about:blank']}
@@ -1393,6 +1400,7 @@ export default function MiniWaveBrowser() {
               <SettingRow icon="shield-checkmark-outline" title={lang.adBlock} detail={lang.adBlockDetail} colors={displayColors} trailing={<Switch value={settings.blockTrackers} onValueChange={(value) => setSettings((current) => ({ ...current, blockTrackers: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <SettingRow icon="notifications-outline" title={lang.notification} detail={lang.notificationDetail} colors={displayColors} trailing={<Switch value={settings.notifications} onValueChange={(value) => void requestNotifications(value)} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <SettingRow icon="eye-off-outline" title={lang.privateDefault} detail={lang.privateDetail} colors={displayColors} trailing={<Switch value={settings.privateDefault} onValueChange={(value) => setSettings((current) => ({ ...current, privateDefault: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
+              <SettingRow icon="desktop-outline" title={lang.desktopMode} detail={lang.desktopModeDetail} colors={displayColors} trailing={<Switch value={settings.desktopMode} onValueChange={(value) => { setSettings((current) => ({ ...current, desktopMode: value })); if (activeTab && activeTab.url !== HOME_URL) setWebKeys((current) => ({ ...current, [activeTab.id]: (current[activeTab.id] ?? 0) + 1 })); }} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <Pressable onPress={resetData} style={[styles.resetRow, { borderColor: displayColors.border, backgroundColor: displayColors.card, flexDirection: rowDirection }]}><Ionicons name="trash-bin-outline" size={22} color={displayColors.destructive} /><View style={styles.tabCardCopy}><Text style={[styles.tabCardTitle, { color: displayColors.destructive, textAlign }]}>{lang.reset}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{lang.resetDetail}</Text></View></Pressable>
               <View style={[styles.aboutBox, { backgroundColor: displayColors.primary }]}><Text style={[styles.aboutName, { color: displayColors.primaryForeground }]}>عمار جلعوم</Text><Text style={[styles.aboutDetail, { color: displayColors.primaryForeground }]}>متصفح عمار جلعوم · {lang.fileUpload}</Text><Text style={[styles.aboutVersion, { color: displayColors.primaryForeground }]}>v1.0 · Android browser</Text></View>
             </ScrollView>
