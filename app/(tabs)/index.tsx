@@ -1357,7 +1357,7 @@ export default function MiniWaveBrowser() {
           </View>
         ) : null}
         {mediaTabId === activeTabId && mediaCandidates.length > 0 && (
-          <Pressable accessibilityRole="button" accessibilityLabel={lang.downloadVideo} onPress={() => void startDownload(mediaCandidates[0].url, `video-${Date.now()}${fileNameFromUrl(mediaCandidates[0].url).match(/(\.[a-z0-9]{2,5})$/i)?.[1] ?? '.mp4'}`)} style={[styles.mediaDownload, { backgroundColor: displayColors.accent }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={lang.downloadVideo} onPress={() => { if (mediaCandidates.length > 1) setDownloadOptions(mediaCandidates); else void startDownload(mediaCandidates[0].url, `video-${Date.now()}${fileNameFromUrl(mediaCandidates[0].url).match(/(\.[a-z0-9]{2,5})$/i)?.[1] ?? '.mp4'}`); }} style={[styles.mediaDownload, { backgroundColor: displayColors.accent }]}>
             <Ionicons name="download-outline" size={18} color={displayColors.accentForeground} />
             <Text style={[styles.mediaDownloadText, { color: displayColors.accentForeground }]}>{lang.downloadVideo}</Text>
           </Pressable>
