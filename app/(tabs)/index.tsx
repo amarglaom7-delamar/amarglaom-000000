@@ -72,7 +72,7 @@ type Settings = {
 type MediaCandidate = { url: string; label: string; isPlaying?: boolean };
 
 const DEFAULT_SEARCH_ENGINE: SearchEngine = 'google';
-const HOME_URL = 'https://www.google.com/';
+const HOME_URL = 'miniwave://home';
 const SEARCH_ENGINE_OPTIONS: Array<{ id: SearchEngine; label: string }> = [
   { id: 'google', label: 'Google' },
   { id: 'bing', label: 'Bing' },
