@@ -352,6 +352,7 @@ function InternalVideoPlayer({
 }) {
   const isHls = /\.m3u8(?:$|\?)/i.test(candidate.url);
   const source = useMemo(() => isHls ? { uri: candidate.url, contentType: 'hls' as const } : { uri: candidate.url, useCaching: true }, [candidate.url, isHls]);
+  const videoViewRef = useRef<any>(null);
   const player = useVideoPlayer(source, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
     instance.play();
@@ -435,7 +436,7 @@ function InternalVideoPlayer({
     <View style={[styles.internalPlayerScreen, styles.internalPlayerInline, frameStyle]}>
       <StatusBar style="light" hidden={false} />
         <Pressable style={styles.internalPlayerVideoArea} onPress={handlePlayerTap} onLongPress={handleLongPress} onPressOut={releaseLongPress}>
-          <VideoView player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
+          <VideoView ref={videoViewRef} player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
           {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
           {status === 'error' ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
           {showControls ? (
@@ -458,8 +459,8 @@ function InternalVideoPlayer({
                   <Pressable onPress={toggleMute} style={styles.internalPlayerControl}><Ionicons name={muted ? 'volume-mute-outline' : 'volume-high-outline'} size={21} color="#ffffff" /></Pressable>
                   <Pressable onPress={() => onDownload(candidate.url, 'video-' + Date.now())} style={styles.internalPlayerControl}><Ionicons name="download-outline" size={22} color="#ffffff" /></Pressable>
                   <Pressable onPress={onFavorite} style={styles.internalPlayerControl}><Ionicons name="star-outline" size={21} color="#ffffff" /></Pressable>
-                  <Pressable onPress={() => void player.startPictureInPicture()} style={styles.internalPlayerControl}><Ionicons name="albums-outline" size={21} color="#ffffff" /></Pressable>
-                  <Pressable onPress={() => void player.enterFullscreen()} style={styles.internalPlayerControl}><Ionicons name="expand-outline" size={21} color="#ffffff" /></Pressable>
+                  <Pressable onPress={() => void videoViewRef.current?.startPictureInPicture()} style={styles.internalPlayerControl}><Ionicons name="albums-outline" size={21} color="#ffffff" /></Pressable>
+                  <Pressable onPress={() => void videoViewRef.current?.enterFullscreen()} style={styles.internalPlayerControl}><Ionicons name="expand-outline" size={21} color="#ffffff" /></Pressable>
                 </View>
                 {sourceChoices.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.internalPlayerSources}>{sourceChoices.map((item, index) => <Pressable key={item.url} onPress={() => chooseSource(index)} style={[styles.internalPlayerSourceChip, sourceIndex === index && styles.internalPlayerSourceChipActive]}><Text style={styles.internalPlayerSourceText}>{item.label || (index + 1) + 'P'}</Text></Pressable>)}</ScrollView> : null}
               </View>
