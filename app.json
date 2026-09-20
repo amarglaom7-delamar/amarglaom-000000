@@ -47,6 +47,12 @@
           "icon": "./assets/images/icon.png",
           "color": "#176b68"
         }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsPictureInPicture": true
+        }
       ]
     ],
     "experiments": {

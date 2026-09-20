@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEvent } from 'expo';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Notifications from 'expo-notifications';
@@ -48,7 +50,8 @@ type DownloadEntry = {
   url: string;
   name: string;
   progress: number;
-  status: 'queued' | 'downloading' | 'done' | 'failed';
+  status: 'queued' | 'downloading' | 'paused' | 'done' | 'failed';
+  resumeData?: string;
   localUri?: string;
   error?: string;
 };
@@ -134,6 +137,8 @@ const t = {
     downloadStarted: 'بدأ التنزيل',
     downloadDone: 'اكتمل التنزيل',
     downloadFailed: 'فشل التنزيل',
+    downloadPaused: 'تم إيقاف التنزيل مؤقتًا',
+    downloadResumed: 'استؤنف التنزيل',
     chooseQuality: 'اختر الجودة',
     fileUpload: 'رفع الملفات مدعوم عبر المواقع التي توفر زر اختيار ملف.',
     appearance: 'المظهر',
@@ -161,6 +166,7 @@ const t = {
     loading: 'جارٍ التحميل',
     offline: 'تحقق من اتصال الإنترنت أو VPN الخارجي.',
     noMedia: 'لم يتم العثور على ملف وسائط قابل للتنزيل.',
+    hlsNotice: 'تم اكتشاف بث HLS؛ تنزيله كملف MP4 يحتاج محوّل فيديو أصليًا.',
     drmNotice: 'لا يمكن تنزيل هذا المحتوى لأنه محمي أو يتطلب DRM.',
     downloadManager: 'مدير التنزيلات',
     clearHistoryConfirm: 'هل تريد حذف سجل التصفح؟',
@@ -195,6 +201,8 @@ const t = {
     downloadStarted: 'Download started',
     downloadDone: 'Download complete',
     downloadFailed: 'Download failed',
+    downloadPaused: 'Download paused',
+    downloadResumed: 'Download resumed',
     chooseQuality: 'Choose quality',
     fileUpload: 'File uploads work on sites that provide a file picker.',
     appearance: 'Appearance',
@@ -222,6 +230,7 @@ const t = {
     loading: 'Loading',
     offline: 'Check your internet connection or external VPN.',
     noMedia: 'No downloadable media was detected.',
+    hlsNotice: 'HLS streaming was detected; saving it as MP4 requires a native video remuxer.',
     drmNotice: 'This content is protected or requires DRM and cannot be downloaded.',
     downloadManager: 'Download manager',
     clearHistoryConfirm: 'Delete browsing history?',
@@ -294,6 +303,155 @@ function IconButton({
   );
 }
 
+function formatPlayerTime(value: number) {
+  if (!Number.isFinite(value) || value < 0) return '00:00';
+  const total = Math.floor(value);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return [h, m, s].map((part) => String(part).padStart(2, '0')).join(':');
+  return [m, s].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+function InternalVideoPlayer({
+  candidate,
+  sources,
+  insets,
+  language,
+  onClose,
+  onDownload,
+  onShare,
+  onFavorite,
+}: {
+  candidate: MediaCandidate;
+  sources: MediaCandidate[];
+  insets: { top: number; bottom: number };
+  language: Language;
+  onClose: () => void;
+  onDownload: (url: string, name?: string) => void;
+  onShare: () => void;
+  onFavorite: () => void;
+}) {
+  const isHls = /\.m3u8(?:$|\?)/i.test(candidate.url);
+  const source = useMemo(() => isHls ? { uri: candidate.url, contentType: 'hls' as const } : { uri: candidate.url, useCaching: true }, [candidate.url, isHls]);
+  const player = useVideoPlayer(source, (instance) => {
+    instance.timeUpdateEventInterval = 0.25;
+    instance.play();
+  });
+  const { currentTime = 0 } = useEvent(player, 'timeUpdate', { currentTime: 0 });
+  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  const { status } = useEvent(player, 'statusChange', { status: player.status, error: null });
+  const [showControls, setShowControls] = useState(true);
+  const [speed, setSpeed] = useState(1);
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const [progressWidth, setProgressWidth] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const lastTapRef = useRef({ time: 0, x: 0 });
+  const duration = Number.isFinite(player.duration) ? player.duration : 0;
+  const sourceChoices = sources.length > 1 ? sources : [];
+  const title = candidate.label || 'Video';
+
+  useEffect(() => {
+    if (!isPlaying) {
+      setShowControls(true);
+      return;
+    }
+    const timer = setTimeout(() => setShowControls(false), 3200);
+    return () => clearTimeout(timer);
+  }, [isPlaying, currentTime]);
+
+  const toggleControls = () => setShowControls((value) => !value);
+  const togglePlay = () => (isPlaying ? player.pause() : player.play());
+  const handlePlayerTap = (event: any) => {
+    const now = Date.now();
+    const x = Number(event.nativeEvent.locationX || 0);
+    const previous = lastTapRef.current;
+    if (now - previous.time < 280) {
+      const delta = x - previous.x;
+      player.seekBy(delta < 0 ? -10 : 10);
+      setShowControls(true);
+      lastTapRef.current = { time: 0, x: 0 };
+      return;
+    }
+    lastTapRef.current = { time: now, x };
+    toggleControls();
+  };
+  const handleLongPress = () => {
+    setSpeed(2);
+    player.playbackRate = 2;
+    if (!isPlaying) player.play();
+  };
+  const releaseLongPress = () => {
+    if (speed === 2) {
+      setSpeed(1);
+      player.playbackRate = 1;
+    }
+  };
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    player.muted = next;
+  };
+  const changeSpeed = () => {
+    const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
+    setSpeed(next);
+    player.playbackRate = next;
+  };
+  const seekFromProgress = (event: any) => {
+    if (!duration || !progressWidth) return;
+    const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / progressWidth));
+    player.currentTime = duration * ratio;
+  };
+
+  const chooseSource = (index: number) => {
+    const next = sourceChoices[index];
+    if (!next || next.url === candidate.url) return;
+    setSourceIndex(index);
+    player.replace({ uri: next.url, contentType: /\.m3u8(?:$|\?)/i.test(next.url) ? 'hls' : 'auto' });
+    player.play();
+  };
+
+  return (
+    <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={styles.internalPlayerScreen}>
+        <StatusBar style="light" hidden={false} />
+        <Pressable style={styles.internalPlayerVideoArea} onPress={handlePlayerTap} onLongPress={handleLongPress} onPressOut={releaseLongPress}>
+          <VideoView player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
+          {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
+          {status === 'error' ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
+          {showControls ? (
+            <View pointerEvents="box-none" style={[styles.internalPlayerOverlay, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
+              <View style={styles.internalPlayerTopBar}>
+                <Pressable onPress={onClose} hitSlop={10} style={styles.internalPlayerTopButton}><Ionicons name="arrow-back" size={24} color="#ffffff" /></Pressable>
+                <Text numberOfLines={1} style={styles.internalPlayerTitle}>{title}</Text>
+                <Pressable onPress={onShare} hitSlop={10} style={styles.internalPlayerTopButton}><Ionicons name="share-outline" size={22} color="#ffffff" /></Pressable>
+              </View>
+              <View style={styles.internalPlayerBottom}>
+                <Pressable onPress={seekFromProgress} onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)} style={styles.internalPlayerProgressTrack}>
+                  <View style={[styles.internalPlayerProgressFill, { width: duration ? ((currentTime / duration) * 100) + '%' : '0%' }]} />
+                </View>
+                <View style={styles.internalPlayerControlsRow}>
+                  <Pressable onPress={() => player.seekBy(-10)} style={styles.internalPlayerControl}><Ionicons name="play-back" size={21} color="#ffffff" /></Pressable>
+                  <Pressable onPress={togglePlay} style={styles.internalPlayerPlay}><Ionicons name={isPlaying ? 'pause' : 'play'} size={25} color="#000000" /></Pressable>
+                  <Pressable onPress={() => player.seekBy(10)} style={styles.internalPlayerControl}><Ionicons name="play-forward" size={21} color="#ffffff" /></Pressable>
+                  <Text style={styles.internalPlayerTime}>{formatPlayerTime(currentTime)} / {formatPlayerTime(duration)}</Text>
+                  <Pressable onPress={changeSpeed} style={styles.internalPlayerSpeed}><Text style={styles.internalPlayerSpeedText}>{speed}x</Text></Pressable>
+                  <Pressable onPress={toggleMute} style={styles.internalPlayerControl}><Ionicons name={muted ? 'volume-mute-outline' : 'volume-high-outline'} size={21} color="#ffffff" /></Pressable>
+                  <Pressable onPress={() => onDownload(candidate.url, 'video-' + Date.now())} style={styles.internalPlayerControl}><Ionicons name="download-outline" size={22} color="#ffffff" /></Pressable>
+                  <Pressable onPress={onFavorite} style={styles.internalPlayerControl}><Ionicons name="star-outline" size={21} color="#ffffff" /></Pressable>
+                  <Pressable onPress={() => void player.startPictureInPicture()} style={styles.internalPlayerControl}><Ionicons name="albums-outline" size={21} color="#ffffff" /></Pressable>
+                  <Pressable onPress={() => void player.enterFullscreen()} style={styles.internalPlayerControl}><Ionicons name="expand-outline" size={21} color="#ffffff" /></Pressable>
+                </View>
+                {sourceChoices.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.internalPlayerSources}>{sourceChoices.map((item, index) => <Pressable key={item.url} onPress={() => chooseSource(index)} style={[styles.internalPlayerSourceChip, sourceIndex === index && styles.internalPlayerSourceChipActive]}><Text style={styles.internalPlayerSourceText}>{item.label || (index + 1) + 'P'}</Text></Pressable>)}</ScrollView> : null}
+              </View>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
 export default function MiniWaveBrowser() {
   const systemScheme = useColorScheme();
   const colors = useColors();
@@ -318,6 +476,8 @@ export default function MiniWaveBrowser() {
   const [downloadOptions, setDownloadOptions] = useState<MediaCandidate[] | null>(null);
   const [mediaCandidates, setMediaCandidates] = useState<MediaCandidate[]>([]);
   const [mediaTabId, setMediaTabId] = useState('');
+  const [internalPlayer, setInternalPlayer] = useState<MediaCandidate | null>(null);
+  const [internalPlayerSources, setInternalPlayerSources] = useState<MediaCandidate[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [webProgress, setWebProgress] = useState(0);
@@ -382,6 +542,11 @@ export default function MiniWaveBrowser() {
 
   useEffect(() => {
     const handleHardwareBack = () => {
+      if (internalPlayer) {
+        setInternalPlayer(null);
+        setInternalPlayerSources([]);
+        return true;
+      }
       if (downloadOptions) {
         setDownloadOptions(null);
         return true;
@@ -411,7 +576,7 @@ export default function MiniWaveBrowser() {
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
     return () => subscription.remove();
-  }, [activeTab, downloadOptions, libraryOpen, qrOpen, settingsOpen, tabsOpen]);
+  }, [activeTab, downloadOptions, internalPlayer, libraryOpen, qrOpen, settingsOpen, tabsOpen]);
 
   const setTab = useCallback((id: string, patch: Partial<BrowserTab>) => {
     setTabs((current) => current.map((tab) => (tab.id === id ? { ...tab, ...patch } : tab)));
@@ -508,6 +673,10 @@ export default function MiniWaveBrowser() {
       setNotice(lang.drmNotice);
       return;
     }
+    if (/\.m3u8(?:$|\?)/i.test(url)) {
+      setNotice(lang.hlsNotice);
+      return;
+    }
     const id = makeId('download');
     const name = (suggestedName || fileNameFromUrl(url)).replace(/[^\w.-]+/g, '_');
     const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '';
@@ -531,7 +700,14 @@ export default function MiniWaveBrowser() {
       );
       downloadsRef.current[id] = resumable;
       const result = await resumable.downloadAsync();
-      if (!result?.uri) throw new Error('The video file was not saved');
+      if (!result?.uri) {
+        const snapshot = downloadsRef.current[id]?.savable?.();
+        if (snapshot?.resumeData) {
+          setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'paused', resumeData: JSON.stringify(snapshot) } : item));
+          return;
+        }
+        throw new Error('The video file was not saved');
+      }
       const contentType = Object.entries(result.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? '';
       if (result.status >= 400 || /text\/html|application\/json/i.test(contentType)) {
         await FileSystem.deleteAsync(result.uri, { idempotent: true });
@@ -546,9 +722,71 @@ export default function MiniWaveBrowser() {
       setNotice(lang.downloadFailed);
       await notifyDownload(lang.downloadFailed, name);
     } finally {
-      delete downloadsRef.current[id];
+      setDownloads((items) => {
+        const item = items.find((entry) => entry.id === id);
+        if (item?.status !== 'paused') delete downloadsRef.current[id];
+        return items;
+      });
     }
-  }, [lang.downloadDone, lang.downloadFailed, lang.downloadStarted, notifyDownload]);
+  }, [lang.downloadDone, lang.downloadFailed, lang.downloadStarted, lang.hlsNotice, notifyDownload]);
+
+  const pauseDownload = useCallback(async (id: string) => {
+    const task = downloadsRef.current[id];
+    if (!task) return;
+    try {
+      const snapshot = await task.pauseAsync();
+      setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'paused', resumeData: JSON.stringify(snapshot) } : item));
+      setNotice(lang.downloadPaused);
+    } catch {
+      setNotice(lang.downloadFailed);
+    }
+  }, [lang.downloadFailed, lang.downloadPaused]);
+
+  const resumeDownload = useCallback(async (id: string) => {
+    const task = downloadsRef.current[id];
+    if (!task) return;
+    setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'downloading' } : item));
+    setNotice(lang.downloadResumed);
+    try {
+      const result = await task.resumeAsync();
+      if (!result?.uri) return;
+      setDownloads((items) => items.map((item) => item.id === id ? { ...item, progress: 100, status: 'done', localUri: result.uri, resumeData: undefined } : item));
+      const name = downloads.find((item) => item.id === id)?.name ?? 'video';
+      await notifyDownload(lang.downloadDone, name);
+      delete downloadsRef.current[id];
+    } catch {
+      setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'failed', error: lang.downloadFailed } : item));
+      setNotice(lang.downloadFailed);
+    }
+  }, [downloads, lang.downloadDone, lang.downloadFailed, lang.downloadResumed, notifyDownload]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    downloads.filter((item) => item.status === 'paused' && item.resumeData && !downloadsRef.current[item.id]).forEach((item) => {
+      try {
+        const snapshot = JSON.parse(item.resumeData || '{}') as {
+          url?: string;
+          fileUri?: string;
+          options?: Record<string, unknown>;
+          resumeData?: string;
+        };
+        if (!snapshot.url || !snapshot.fileUri || !snapshot.resumeData) return;
+        const task = FileSystem.createDownloadResumable(
+          snapshot.url,
+          snapshot.fileUri,
+          snapshot.options || {},
+          (progress) => {
+            const ratio = progress.totalBytesExpectedToWrite > 0 ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite : 0;
+            setDownloads((items) => items.map((entry) => entry.id === item.id ? { ...entry, progress: Math.min(99, Math.round(ratio * 100)) } : entry));
+          },
+          snapshot.resumeData,
+        );
+        downloadsRef.current[item.id] = task;
+      } catch {
+        // Ignore invalid saved resume snapshots.
+      }
+    });
+  }, [downloads, hydrated]);
 
   const onWebMessage = useCallback((event: WebViewMessageEvent, tabId: string) => {
     if (tabId !== activeTabId) return;
@@ -569,14 +807,18 @@ export default function MiniWaveBrowser() {
       if (message.type === 'back') {
         webRefs.current[tabId]?.goBack();
       }
-      if (message.type === 'media') {
+      if (message.type === 'media' || message.type === 'openPlayer') {
         const sources = (message.sources ?? [])
           .filter((item) => item.url && /^https?:\/\//i.test(item.url))
-          .filter((item) => !/\.m3u8(?:$|\?)/i.test(item.url))
           .map((item) => ({ ...item, label: item.label || lang.downloadVideo }));
+        if (message.url && /^https?:\/\//i.test(message.url)) sources.unshift({ url: message.url, label: lang.downloadVideo, isPlaying: true });
         const unique = sources.filter((item, index, all) => all.findIndex((candidate) => candidate.url === item.url) === index).slice(0, 8);
         setMediaTabId(tabId);
         setMediaCandidates(unique);
+        if (message.type === 'openPlayer' && unique[0]) {
+          setInternalPlayer(unique[0]);
+          setInternalPlayerSources(unique);
+        }
       }
     } catch {
       // Ignore messages from pages that are not JSON.
@@ -590,8 +832,11 @@ export default function MiniWaveBrowser() {
       script.innerHTML = dataSaver ? 'img, picture, video, iframe[src*="ads"] { opacity: .88; }' : '';
       document.documentElement.appendChild(script);
       function send(type, payload) { try { window.ReactNativeWebView.postMessage(JSON.stringify(Object.assign({type:type}, payload || {}))); } catch(e) {} }
+      function isHlsUrl(url) {
+        return !!url && /^https?:\\/\\//i.test(url) && /\\.m3u8(?:$|\\?)/i.test(url);
+      }
       function usableMediaUrl(url) {
-        return !!url && /^https?:\\/\\//i.test(url) && !/\\.m3u8(?:$|\\?)/i.test(url);
+        return !!url && /^https?:\\/\\//i.test(url);
       }
       function mediaUrl(mediaElement) {
         var source = mediaElement.querySelector('source');
@@ -703,6 +948,7 @@ export default function MiniWaveBrowser() {
           return button;
         }
 
+        var playButton = controlButton('Play/Pause', '▶');
         var shareButton = controlButton('Share', '↗');
         var favoriteButton = controlButton('Favorite', '☆');
         var downloadButton = controlButton('Download', '↓');
@@ -730,6 +976,7 @@ export default function MiniWaveBrowser() {
           var ratio = duration > 0 && isFinite(duration) ? Math.min(1, Math.max(0, mediaElement.currentTime / duration)) : 0;
           progressFill.style.width = (ratio * 100) + '%';
           time.textContent = formatTime(mediaElement.currentTime) + ' / ' + formatTime(duration);
+          playButton.textContent = mediaElement.paused ? '▶' : 'Ⅱ';
           downloadButton.style.opacity = usableMediaUrl(mediaUrl(mediaElement)) ? '.95' : '.35';
         }
         function seek(event) {
@@ -741,6 +988,14 @@ export default function MiniWaveBrowser() {
           showControls();
         }
 
+        playButton.addEventListener('click', function() {
+          try {
+            if (mediaElement.paused) mediaElement.play();
+            else mediaElement.pause();
+            showControls();
+            updateProgress();
+          } catch(e) {}
+        }, true);
         shareButton.addEventListener('click', function() {
           send('share', {url: location.href, title: document.title});
         }, true);
@@ -768,8 +1023,19 @@ export default function MiniWaveBrowser() {
         }, true);
         progress.addEventListener('click', seek, true);
         controls.addEventListener('touchstart', showControls, {passive:true});
-        mediaElement.addEventListener('click', showControls, true);
-        mediaElement.addEventListener('touchstart', showControls, {passive:true});
+        function openInternalPlayer() {
+          var url = mediaUrl(mediaElement);
+          if (!usableMediaUrl(url)) return;
+          var sourceList = [{url:url, label:isHlsUrl(url) ? 'HLS' : (mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : 'Video'), isPlaying:true}];
+          Array.prototype.slice.call(mediaElement.querySelectorAll('source')).forEach(function(source, index) {
+            var sourceUrl = source.src;
+            if (usableMediaUrl(sourceUrl)) sourceList.push({url:sourceUrl, label:isHlsUrl(sourceUrl) ? 'HLS' : (source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1))), isPlaying:true});
+          });
+          sourceList = sourceList.filter(function(item, index, all) { return all.findIndex(function(candidate) { return candidate.url === item.url; }) === index; }).slice(0, 8);
+          send('openPlayer', {url:url, title:document.title || 'Video', sources:sourceList});
+        }
+        mediaElement.addEventListener('click', function() { showControls(); openInternalPlayer(); }, true);
+        mediaElement.addEventListener('touchstart', function() { showControls(); openInternalPlayer(); }, {passive:true});
         ['timeupdate', 'loadedmetadata', 'loadeddata', 'durationchange', 'progress', 'canplay', 'emptied'].forEach(function(eventName) {
           mediaElement.addEventListener(eventName, updateProgress, true);
         });
@@ -785,10 +1051,10 @@ export default function MiniWaveBrowser() {
           addVideoControls(mediaElement);
           if (mediaElement.paused || mediaElement.ended) return;
           var url = mediaUrl(mediaElement);
-          if (usableMediaUrl(url)) sources.push({url:url, label: mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video'), isPlaying:true});
+          if (usableMediaUrl(url)) sources.push({url:url, label: isHlsUrl(url) ? 'HLS' : (mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video')), isPlaying:true});
           Array.prototype.slice.call(mediaElement.querySelectorAll('source')).forEach(function(source, index) {
             var sourceUrl = source.src;
-            if (usableMediaUrl(sourceUrl)) sources.push({url:sourceUrl, label: source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1)), isPlaying:true});
+            if (usableMediaUrl(sourceUrl)) sources.push({url:sourceUrl, label: isHlsUrl(sourceUrl) ? 'HLS' : (source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1))), isPlaying:true});
           });
         });
         var unique = sources.filter(function(item, index, all) {
@@ -951,6 +1217,8 @@ export default function MiniWaveBrowser() {
         )}
       </View>
 
+      {internalPlayer ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={insets} language={settings.language} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); }} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
+
       <View style={[styles.toolbar, { backgroundColor: displayColors.card, borderTopColor: displayColors.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <IconButton name="arrow-back" label={rtl ? 'السابق' : 'Back'} color={activeTab?.canGoBack ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goBack()} disabled={!activeTab?.canGoBack} />
         <IconButton name="arrow-forward" label={rtl ? 'التالي' : 'Forward'} color={activeTab?.canGoForward ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goForward()} disabled={!activeTab?.canGoForward} />
@@ -993,7 +1261,7 @@ export default function MiniWaveBrowser() {
             <ScrollView contentContainerStyle={styles.sheetList}>
               {libraryTab === 'history' && (history.length ? history.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="time-outline" size={21} color={displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View></Pressable>) : <Empty label={lang.noHistory} colors={displayColors} />)}
               {libraryTab === 'bookmarks' && (bookmarks.length ? bookmarks.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="star" size={21} color={displayColors.accent} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View><IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setBookmarks((current) => current.filter((entry) => entry.id !== item.id))} /></Pressable>) : <Empty label={lang.noBookmarks} colors={displayColors} />)}
-              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{item.status === 'downloading' && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'done' && <IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} />}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setDownloads((current) => current.filter((entry) => entry.id !== item.id))} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
+              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{(item.status === 'downloading' || item.status === 'paused') && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'downloading' && <IconButton name="pause-circle-outline" label={lang.downloadPaused} color={displayColors.primary} onPress={() => void pauseDownload(item.id)} />}{item.status === 'paused' && <IconButton name="play-circle-outline" label={lang.downloadResumed} color={displayColors.primary} onPress={() => void resumeDownload(item.id)} />}{item.status === 'done' && <IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} />}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setDownloads((current) => current.filter((entry) => entry.id !== item.id))} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
             </ScrollView>
           </View>
         </View>
@@ -1119,4 +1387,28 @@ const styles = StyleSheet.create({
   permissionBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   qualityCard: { margin: 20, borderRadius: 22, padding: 17, gap: 9 },
   qualityRow: { borderWidth: 1, borderRadius: 13, padding: 13, alignItems: 'center', gap: 8 },
+  internalPlayerScreen: { flex: 1, backgroundColor: '#000000' },
+  internalPlayerVideoArea: { flex: 1, backgroundColor: '#000000' },
+  internalPlayerVideo: { flex: 1, width: '100%' },
+  internalPlayerLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  internalPlayerError: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', padding: 30, gap: 12 },
+  internalPlayerErrorText: { color: '#ffffff', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  internalPlayerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between', backgroundColor: 'rgba(0,0,0,.18)' },
+  internalPlayerTopBar: { minHeight: 48, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  internalPlayerTopButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,.42)' },
+  internalPlayerTitle: { flex: 1, color: '#ffffff', fontSize: 14, fontWeight: '800', textAlign: 'center' },
+  internalPlayerBottom: { backgroundColor: 'rgba(0,0,0,.82)', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 7 },
+  internalPlayerProgressTrack: { height: 3, width: '100%', backgroundColor: 'rgba(255,255,255,.28)', borderRadius: 3, overflow: 'hidden' },
+  internalPlayerProgressFill: { height: '100%', backgroundColor: '#ffffff' },
+  internalPlayerControlsRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  internalPlayerControl: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center' },
+  internalPlayerPlay: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
+  internalPlayerTime: { flex: 1, color: '#ffffff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  internalPlayerSpeed: { minWidth: 40, height: 30, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.45)', alignItems: 'center', justifyContent: 'center' },
+  internalPlayerSpeedText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
+  internalPlayerSources: { gap: 7, paddingVertical: 5 },
+  internalPlayerSourceChip: { borderWidth: 1, borderColor: 'rgba(255,255,255,.35)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  internalPlayerSourceChipActive: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
+  internalPlayerSourceText: { color: '#ffffff', fontSize: 10, fontWeight: '800' },
 });
+
