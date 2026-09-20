@@ -908,12 +908,6 @@ export default function MiniWaveBrowser() {
       (function(){var bad=/popup|popunder|doubleclick|googlesyndication|adservice|adnxs|exoclick|onclickads|propellerads|trafficjunky/i;var ow=window.open;window.open=function(u){try{if(u&&bad.test(String(u)))return null;}catch(e){}return null;};document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(a&&a.target==='_blank'&&a.href&&bad.test(a.href)){e.preventDefault();e.stopPropagation();}},true);})();
       var n=${nightMode?'true':'false'},x=${textOnly?'true':'false'};function pm(){var s=document.getElementById('miniwave-page-mode');if(!s){s=document.createElement('style');s.id='miniwave-page-mode';document.documentElement.appendChild(s)}s.textContent=(window.__n?'html,body{background:#111!important;color:#eee!important}a{color:#8ab4f8!important}input,textarea,select,button{background:#222!important;color:#eee!important;border-color:#555!important}img,video{filter:brightness(.82)}':'')+(window.__x?'video,audio,img,picture,iframe,canvas,svg,object,embed{display:none!important}':'')}window.__n=n;window.__x=x;pm();document.addEventListener('miniwave-page-mode',function(e){var d=e.detail||{};window.__n=!!d.night;window.__x=!!d.textOnly;pm()});
       var subtitleEnabled = false;
-      var subtitleOverlay = document.createElement('div');
-      subtitleOverlay.setAttribute('data-miniwave-subtitle-overlay','1');
-      subtitleOverlay.style.cssText = 'position:absolute;left:5%;right:5%;bottom:52px;z-index:20;text-align:center;color:#fff;font:bold 17px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;text-shadow:0 2px 4px #000,0 0 8px #000;background:rgba(0,0,0,.18);padding:4px 8px;border-radius:6px;pointer-events:none;display:none;';
-      document.documentElement.appendChild(subtitleOverlay);
-      function setTranslatedSubtitle(text){ subtitleOverlay.textContent=text||''; subtitleOverlay.style.display=text?'block':'none'; }
-      document.addEventListener('miniwave-subtitle-translation',function(e){var d=e.detail||{};setTranslatedSubtitle(d.text||'');});
       function subtitleCue(){
         if(!subtitleEnabled) return;
         var videos=document.querySelectorAll('video');
@@ -1004,6 +998,12 @@ export default function MiniWaveBrowser() {
         progressFill.style.cssText = 'height:100%;width:0;background:#fff;transition:width .1s linear;';
         progress.appendChild(progressFill);
 
+        var subtitleOverlay = document.createElement('div');
+        subtitleOverlay.setAttribute('data-miniwave-subtitle-overlay','1');
+        subtitleOverlay.style.cssText = 'position:absolute;left:5%;right:5%;bottom:49px;z-index:30;text-align:center;color:#fff;font:bold 17px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;text-shadow:0 2px 4px #000,0 0 8px #000;background:rgba(0,0,0,.18);padding:4px 8px;border-radius:6px;pointer-events:none;display:none;';
+        function setTranslatedSubtitle(text){ subtitleOverlay.textContent=text||''; subtitleOverlay.style.display=text?'block':'none'; }
+        shell.appendChild(subtitleOverlay);
+
         var controls = document.createElement('div');
         controls.setAttribute('role', 'toolbar');
         controls.setAttribute('aria-label', 'Video controls');
@@ -1069,6 +1069,7 @@ export default function MiniWaveBrowser() {
         var backButton = controlButton('Back', '‹');
         var fullscreenButton = controlButton('Fullscreen', '⛶');
         var translateButton = controlButton('Arabic subtitles', 'ع');
+        document.addEventListener('miniwave-subtitle-translation', function(e){var d=e.detail||{};setTranslatedSubtitle(d.text||'');}, false);
         shell.appendChild(progress);
         shell.appendChild(controls);
 
