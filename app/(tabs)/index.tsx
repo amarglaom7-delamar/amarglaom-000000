@@ -590,8 +590,11 @@ export default function MiniWaveBrowser() {
       script.innerHTML = dataSaver ? 'img, picture, video, iframe[src*="ads"] { opacity: .88; }' : '';
       document.documentElement.appendChild(script);
       function send(type, payload) { try { window.ReactNativeWebView.postMessage(JSON.stringify(Object.assign({type:type}, payload || {}))); } catch(e) {} }
+      function isHlsUrl(url) {
+        return !!url && /^https?:\\/\\//i.test(url) && /\\.m3u8(?:$|\\?)/i.test(url);
+      }
       function usableMediaUrl(url) {
-        return !!url && /^https?:\\/\\//i.test(url) && !/\\.m3u8(?:$|\\?)/i.test(url);
+        return !!url && /^https?:\\/\\//i.test(url);
       }
       function mediaUrl(mediaElement) {
         var source = mediaElement.querySelector('source');
@@ -795,10 +798,10 @@ export default function MiniWaveBrowser() {
           addVideoControls(mediaElement);
           if (mediaElement.paused || mediaElement.ended) return;
           var url = mediaUrl(mediaElement);
-          if (usableMediaUrl(url)) sources.push({url:url, label: mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video'), isPlaying:true});
+          if (usableMediaUrl(url)) sources.push({url:url, label: isHlsUrl(url) ? 'HLS' : (mediaElement.videoWidth ? mediaElement.videoWidth + 'p' : (mediaElement.tagName === 'AUDIO' ? 'Audio' : 'Video')), isPlaying:true});
           Array.prototype.slice.call(mediaElement.querySelectorAll('source')).forEach(function(source, index) {
             var sourceUrl = source.src;
-            if (usableMediaUrl(sourceUrl)) sources.push({url:sourceUrl, label: source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1)), isPlaying:true});
+            if (usableMediaUrl(sourceUrl)) sources.push({url:sourceUrl, label: isHlsUrl(sourceUrl) ? 'HLS' : (source.getAttribute('label') || source.getAttribute('size') || ('Source ' + (index + 1))), isPlaying:true});
           });
         });
         var unique = sources.filter(function(item, index, all) {
