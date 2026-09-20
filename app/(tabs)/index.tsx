@@ -328,10 +328,12 @@ function InternalVideoPlayer({
   sources: MediaCandidate[];
   insets: { top: number; bottom: number };
   language: Language;
+  frameStyle?: any;
   onClose: () => void;
   onDownload: (url: string, name?: string) => void;
   onShare: () => void;
   onFavorite: () => void;
+  frameStyle?: any;
 }) {
   const isHls = /\.m3u8(?:$|\?)/i.test(candidate.url);
   const source = useMemo(() => isHls ? { uri: candidate.url, contentType: 'hls' as const } : { uri: candidate.url, useCaching: true }, [candidate.url, isHls]);
@@ -413,9 +415,8 @@ function InternalVideoPlayer({
   };
 
   return (
-    <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.internalPlayerScreen}>
-        <StatusBar style="light" hidden={false} />
+    <View style={[styles.internalPlayerScreen, styles.internalPlayerInline, frameStyle]}>
+      <StatusBar style="light" hidden={false} />
         <Pressable style={styles.internalPlayerVideoArea} onPress={handlePlayerTap} onLongPress={handleLongPress} onPressOut={releaseLongPress}>
           <VideoView player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
           {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
@@ -448,8 +449,7 @@ function InternalVideoPlayer({
             </View>
           ) : null}
         </Pressable>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
