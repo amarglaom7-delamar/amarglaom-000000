@@ -339,6 +339,7 @@ function InternalVideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [progressWidth, setProgressWidth] = useState(0);
   const duration = Number.isFinite(player.duration) ? player.duration : 0;
   const sourceChoices = sources.length > 1 ? sources : [];
   const title = candidate.label || 'Video';
@@ -359,6 +360,12 @@ function InternalVideoPlayer({
     setSpeed(next);
     player.playbackRate = next;
   };
+  const seekFromProgress = (event: any) => {
+    if (!duration || !progressWidth) return;
+    const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / progressWidth));
+    player.currentTime = duration * ratio;
+  };
+
   const chooseSource = (index: number) => {
     const next = sourceChoices[index];
     if (!next || next.url === candidate.url) return;
@@ -383,7 +390,7 @@ function InternalVideoPlayer({
                 <Pressable onPress={onShare} hitSlop={10} style={styles.internalPlayerTopButton}><Ionicons name="share-outline" size={22} color="#ffffff" /></Pressable>
               </View>
               <View style={styles.internalPlayerBottom}>
-                <View style={styles.internalPlayerProgressTrack}>
+                <Pressable onPress={seekFromProgress} onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)} style={styles.internalPlayerProgressTrack}>
                   <View style={[styles.internalPlayerProgressFill, { width: duration ? ((currentTime / duration) * 100) + '%' : '0%' }]} />
                 </View>
                 <View style={styles.internalPlayerControlsRow}>
