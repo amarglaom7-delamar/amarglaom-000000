@@ -32,8 +32,8 @@ const shortcuts = [
   { key: 'google', icon: 'logo-google', label: 'Google', url: 'https://www.google.com/' },
   { key: 'youtube', icon: 'logo-youtube', label: 'YouTube', url: 'https://www.youtube.com/' },
   { key: 'facebook', icon: 'logo-facebook', label: 'Facebook', url: 'https://www.facebook.com/' },
-  { key: 'tiktok', icon: 'logo-tiktok', label: 'TikTok', url: 'https://www.tiktok.com/' },
-  { key: 'whatsapp', icon: 'logo-whatsapp', label: 'WhatsApp', url: 'https://web.whatsapp.com/' },
+  { key: 'tiktok', icon: 'musical-notes', label: 'TikTok', url: 'https://www.tiktok.com/' },
+  { key: 'whatsapp', icon: 'chatbubble-ellipses', label: 'WhatsApp', url: 'https://web.whatsapp.com/' },
   { key: 'bing', icon: 'search-outline', label: 'Bing', url: 'https://www.bing.com/' },
 ] as const;
 
