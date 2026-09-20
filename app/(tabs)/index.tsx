@@ -838,10 +838,6 @@ export default function MiniWaveBrowser() {
         const unique = sources.filter((item, index, all) => all.findIndex((candidate) => candidate.url === item.url) === index).slice(0, 8);
         setMediaTabId(tabId);
         setMediaCandidates(unique);
-        if (message.type === 'openPlayer' && unique[0]) {
-          setInternalPlayer(unique[0]);
-          setInternalPlayerSources(unique);
-        }
       }
     } catch {
       // Ignore messages from pages that are not JSON.
@@ -1143,8 +1139,8 @@ export default function MiniWaveBrowser() {
           sourceList = sourceList.filter(function(item, index, all) { return all.findIndex(function(candidate) { return candidate.url === item.url; }) === index; }).slice(0, 8);
           send('openPlayer', {url:url, title:document.title || 'Video', sources:sourceList});
         }
-        mediaElement.addEventListener('click', function() { showControls(); openInternalPlayer(); }, true);
-        mediaElement.addEventListener('touchstart', function() { showControls(); openInternalPlayer(); }, {passive:true});
+        mediaElement.addEventListener('click', function() { showControls(); }, true);
+        mediaElement.addEventListener('touchstart', function() { showControls(); }, {passive:true});
         ['timeupdate', 'loadedmetadata', 'loadeddata', 'durationchange', 'progress', 'canplay', 'emptied'].forEach(function(eventName) {
           mediaElement.addEventListener(eventName, updateProgress, true);
         });
@@ -1520,6 +1516,5 @@ const styles = StyleSheet.create({
   internalPlayerSourceChipActive: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
   internalPlayerSourceText: { color: '#ffffff', fontSize: 10, fontWeight: '800' },
 });
-
 
 
