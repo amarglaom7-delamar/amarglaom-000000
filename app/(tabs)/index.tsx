@@ -713,31 +713,46 @@ export default function MiniWaveBrowser() {
     setDownloadOptions(null);
     setNotice(lang.downloadStarted);
     try {
-      const resumable = FileSystem.createDownloadResumable(
-        url,
-        target,
-        {},
-        (progress) => {
-          const ratio = progress.totalBytesExpectedToWrite > 0 ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite : 0;
-          setDownloads((current) => current.map((item) => item.id === id ? { ...item, progress: Math.min(99, Math.round(ratio * 100)) } : item));
-        },
-      );
-      downloadsRef.current[id] = resumable;
-      const result = await resumable.downloadAsync();
-      if (!result?.uri) {
-        const snapshot = downloadsRef.current[id]?.savable?.();
-        if (snapshot?.resumeData) {
-          setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'paused', resumeData: JSON.stringify(snapshot) } : item));
-          return;
+      let completed: FileSystem.FileSystemDownloadResult | undefined;
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= 3 && !completed; attempt += 1) {
+        try {
+          if (attempt > 1) {
+            setNotice('إعادة الاتصال بالتنزيل (' + attempt + '/3)…');
+            await new Promise(resolve => setTimeout(resolve, 900 * attempt));
+          }
+          const resumable = FileSystem.createDownloadResumable(
+            url,
+            target,
+            {},
+            (progress) => {
+              const ratio = progress.totalBytesExpectedToWrite > 0 ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite : 0;
+              setDownloads((current) => current.map((item) => item.id === id ? { ...item, progress: Math.min(99, Math.round(ratio * 100)) } : item));
+            },
+          );
+          downloadsRef.current[id] = resumable;
+          const result = await resumable.downloadAsync();
+          if (!result?.uri) {
+            const snapshot = downloadsRef.current[id]?.savable?.();
+            if (snapshot?.resumeData) {
+              setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'paused', resumeData: JSON.stringify(snapshot) } : item));
+              return;
+            }
+            throw new Error('The video file was not saved');
+          }
+          const contentType = Object.entries(result.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? '';
+          if (result.status >= 400 || /text\\/html|application\\/json/i.test(contentType)) {
+            await FileSystem.deleteAsync(result.uri, { idempotent: true });
+            throw new Error('The source returned a web page instead of a video file');
+          }
+          completed = result;
+        } catch (error) {
+          lastError = error;
+          if (attempt === 3) throw error;
         }
-        throw new Error('The video file was not saved');
       }
-      const contentType = Object.entries(result.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? '';
-      if (result.status >= 400 || /text\/html|application\/json/i.test(contentType)) {
-        await FileSystem.deleteAsync(result.uri, { idempotent: true });
-        throw new Error('The source returned a web page instead of a video file');
-      }
-      setDownloads((current) => current.map((item) => item.id === id ? { ...item, progress: 100, status: 'done', localUri: result?.uri } : item));
+      if (!completed?.uri) throw (lastError instanceof Error ? lastError : new Error('The video file was not saved'));
+      setDownloads((current) => current.map((item) => item.id === id ? { ...item, progress: 100, status: 'done', localUri: completed!.uri } : item));
       setNotice(lang.downloadDone);
       await notifyDownload(lang.downloadDone, name);
     } catch (downloadError) {
@@ -1256,6 +1271,19 @@ export default function MiniWaveBrowser() {
           <IconButton name="ellipsis-horizontal" label={lang.settings} color={displayColors.mutedForeground} onPress={() => setSettingsOpen(true)} />
         </View>
         {activeTab?.loading && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { backgroundColor: displayColors.accent, width: `${Math.max(4, webProgress * 100)}%` }]} /></View>}
+        {editingAddress && address.trim() && !activeTab?.private ? (() => {
+          const q = address.trim().toLowerCase();
+          const suggestions = [...history, ...bookmarks.map(item => ({ ...item, visitedAt: item.createdAt }))]
+            .filter(item => item.title.toLowerCase().includes(q) || item.url.toLowerCase().includes(q))
+            .filter((item, index, arr) => arr.findIndex(x => x.url === item.url) === index)
+            .slice(0, 6);
+          return suggestions.length ? <View style={[styles.searchSuggestions, { backgroundColor: displayColors.card, borderColor: displayColors.border }]}>
+            {suggestions.map(item => <Pressable key={item.url} onPress={() => { setAddress(item.url); setEditingAddress(false); openUrl(item.url); }} style={[styles.searchSuggestion, { borderBottomColor: displayColors.border }]}>
+              <Ionicons name="time-outline" size={17} color={displayColors.mutedForeground} />
+              <View style={styles.searchSuggestionCopy}><Text numberOfLines={1} style={[styles.searchSuggestionTitle, { color: displayColors.foreground }]}>{item.title || item.url}</Text><Text numberOfLines={1} style={[styles.searchSuggestionUrl, { color: displayColors.mutedForeground }]}>{item.url}</Text></View>
+            </Pressable>)}
+          </View> : null;
+        })() : null}
       </View>
 
       <View style={styles.webArea}>
@@ -1395,6 +1423,11 @@ const styles = StyleSheet.create({
   tabCounterText: { fontSize: 13, fontWeight: '800' },
   addressRow: { alignItems: 'center', gap: 3, marginTop: 3, marginBottom: 7 },
   addressShell: { flex: 1, minHeight: 43, borderWidth: 1, borderRadius: 15, paddingHorizontal: 10, alignItems: 'center', gap: 7 },
+  searchSuggestions: { position: 'absolute', left: 48, right: 12, top: 104, zIndex: 50, borderWidth: 1, borderRadius: 15, overflow: 'hidden', elevation: 12 },
+  searchSuggestion: { minHeight: 54, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1 },
+  searchSuggestionCopy: { flex: 1 },
+  searchSuggestionTitle: { fontSize: 13, fontWeight: '700' },
+  searchSuggestionUrl: { fontSize: 10, marginTop: 2 },
   addressInput: { flex: 1, fontSize: 14, paddingVertical: 0, minWidth: 0 },
   progressTrack: { height: 2, overflow: 'hidden' },
   progressFill: { height: '100%' },
