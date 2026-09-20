@@ -291,14 +291,6 @@ function fileNameFromUrl(url: string) {
   }
 }
 
-function isBlockedHost(url: string) {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return knownTrackers.some((tracker) => host === tracker || host.endsWith(`.${tracker}`));
-  } catch {
-    return false;
-  }
-}
 
 function IconButton({
   name,
@@ -346,6 +338,7 @@ function InternalVideoPlayer({
   onDownload,
   onShare,
   onFavorite,
+  frameStyle,
 }: {
   candidate: MediaCandidate;
   sources: MediaCandidate[];
@@ -363,9 +356,11 @@ function InternalVideoPlayer({
     instance.timeUpdateEventInterval = 0.25;
     instance.play();
   });
-  const { currentTime = 0 } = useEvent(player, 'timeUpdate', { currentTime: 0 });
+  const timeUpdate = useEvent(player, 'timeUpdate');
+  const currentTime = timeUpdate?.currentTime ?? 0;
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
-  const { status } = useEvent(player, 'statusChange', { status: player.status, error: null });
+  const statusChange = useEvent(player, 'statusChange');
+  const status = statusChange?.status ?? player.status;
   const [showControls, setShowControls] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [sourceIndex, setSourceIndex] = useState(0);
@@ -452,7 +447,7 @@ function InternalVideoPlayer({
               </View>
               <View style={styles.internalPlayerBottom}>
                 <Pressable onPress={seekFromProgress} onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)} style={styles.internalPlayerProgressTrack}>
-                  <View style={[styles.internalPlayerProgressFill, { width: duration ? ((currentTime / duration) * 100) + '%' : '0%' }]} />
+                  <View style={[styles.internalPlayerProgressFill, { width: ((duration ? ((currentTime / duration) * 100) : 0) + '%') as any }]} />
                 </Pressable>
                 <View style={styles.internalPlayerControlsRow}>
                   <Pressable onPress={() => player.seekBy(-10)} style={styles.internalPlayerControl}><Ionicons name="play-back" size={21} color="#ffffff" /></Pressable>
@@ -890,7 +885,7 @@ export default function MiniWaveBrowser() {
   }, [activeTabId, internalPlayer, lang.downloadVideo, startDownload, toggleBookmark]);
 
   useEffect(() => {
-    const speechSubscription = audioTranslationEvents.addListener('onSpeechResult', (event: { text?: string; language?: string }) => {
+    const speechSubscription = (audioTranslationEvents as any).addListener('onSpeechResult', (event: { text?: string; language?: string }) => {
       const text = event?.text?.trim();
       if (!text || !activeTabId) return;
       void (async () => {
@@ -905,7 +900,7 @@ export default function MiniWaveBrowser() {
         } catch {}
       })();
     });
-    const stateSubscription = audioTranslationEvents.addListener('onState', (event: { state?: string; message?: string }) => {
+    const stateSubscription = (audioTranslationEvents as any).addListener('onState', (event: { state?: string; message?: string }) => {
       if (event?.state === 'error' && event.message) setNotice(event.message);
       if (event?.state === 'started') setNotice('بدأت الترجمة من صوت الفيديو.');
       if (event?.state === 'stopped') setNotice('تم إيقاف الترجمة الصوتية.');
