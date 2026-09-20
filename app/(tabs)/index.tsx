@@ -161,6 +161,7 @@ const t = {
     loading: 'جارٍ التحميل',
     offline: 'تحقق من اتصال الإنترنت أو VPN الخارجي.',
     noMedia: 'لم يتم العثور على ملف وسائط قابل للتنزيل.',
+    hlsNotice: 'تم اكتشاف بث HLS؛ تنزيله كملف MP4 يحتاج محوّل فيديو أصليًا.',
     drmNotice: 'لا يمكن تنزيل هذا المحتوى لأنه محمي أو يتطلب DRM.',
     downloadManager: 'مدير التنزيلات',
     clearHistoryConfirm: 'هل تريد حذف سجل التصفح؟',
@@ -222,6 +223,7 @@ const t = {
     loading: 'Loading',
     offline: 'Check your internet connection or external VPN.',
     noMedia: 'No downloadable media was detected.',
+    hlsNotice: 'HLS streaming was detected; saving it as MP4 requires a native video remuxer.',
     drmNotice: 'This content is protected or requires DRM and cannot be downloaded.',
     downloadManager: 'Download manager',
     clearHistoryConfirm: 'Delete browsing history?',
@@ -508,6 +510,10 @@ export default function MiniWaveBrowser() {
       setNotice(lang.drmNotice);
       return;
     }
+    if (/\.m3u8(?:$|\?)/i.test(url)) {
+      setNotice(lang.hlsNotice);
+      return;
+    }
     const id = makeId('download');
     const name = (suggestedName || fileNameFromUrl(url)).replace(/[^\w.-]+/g, '_');
     const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '';
@@ -548,7 +554,7 @@ export default function MiniWaveBrowser() {
     } finally {
       delete downloadsRef.current[id];
     }
-  }, [lang.downloadDone, lang.downloadFailed, lang.downloadStarted, notifyDownload]);
+  }, [lang.downloadDone, lang.downloadFailed, lang.downloadStarted, lang.hlsNotice, notifyDownload]);
 
   const onWebMessage = useCallback((event: WebViewMessageEvent, tabId: string) => {
     if (tabId !== activeTabId) return;
@@ -572,7 +578,6 @@ export default function MiniWaveBrowser() {
       if (message.type === 'media') {
         const sources = (message.sources ?? [])
           .filter((item) => item.url && /^https?:\/\//i.test(item.url))
-          .filter((item) => !/\.m3u8(?:$|\?)/i.test(item.url))
           .map((item) => ({ ...item, label: item.label || lang.downloadVideo }));
         const unique = sources.filter((item, index, all) => all.findIndex((candidate) => candidate.url === item.url) === index).slice(0, 8);
         setMediaTabId(tabId);
