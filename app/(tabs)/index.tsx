@@ -50,7 +50,8 @@ type DownloadEntry = {
   url: string;
   name: string;
   progress: number;
-  status: 'queued' | 'downloading' | 'done' | 'failed';
+  status: 'queued' | 'downloading' | 'paused' | 'done' | 'failed';
+  resumeData?: string;
   localUri?: string;
   error?: string;
 };
@@ -136,6 +137,8 @@ const t = {
     downloadStarted: 'بدأ التنزيل',
     downloadDone: 'اكتمل التنزيل',
     downloadFailed: 'فشل التنزيل',
+    downloadPaused: 'تم إيقاف التنزيل مؤقتًا',
+    downloadResumed: 'استؤنف التنزيل',
     chooseQuality: 'اختر الجودة',
     fileUpload: 'رفع الملفات مدعوم عبر المواقع التي توفر زر اختيار ملف.',
     appearance: 'المظهر',
@@ -198,6 +201,8 @@ const t = {
     downloadStarted: 'Download started',
     downloadDone: 'Download complete',
     downloadFailed: 'Download failed',
+    downloadPaused: 'Download paused',
+    downloadResumed: 'Download resumed',
     chooseQuality: 'Choose quality',
     fileUpload: 'File uploads work on sites that provide a file picker.',
     appearance: 'Appearance',
@@ -695,7 +700,14 @@ export default function MiniWaveBrowser() {
       );
       downloadsRef.current[id] = resumable;
       const result = await resumable.downloadAsync();
-      if (!result?.uri) throw new Error('The video file was not saved');
+      if (!result?.uri) {
+        const snapshot = downloadsRef.current[id]?.savable?.();
+        if (snapshot?.resumeData) {
+          setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'paused', resumeData: JSON.stringify(snapshot) } : item));
+          return;
+        }
+        throw new Error('The video file was not saved');
+      }
       const contentType = Object.entries(result.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? '';
       if (result.status >= 400 || /text\/html|application\/json/i.test(contentType)) {
         await FileSystem.deleteAsync(result.uri, { idempotent: true });
@@ -710,9 +722,43 @@ export default function MiniWaveBrowser() {
       setNotice(lang.downloadFailed);
       await notifyDownload(lang.downloadFailed, name);
     } finally {
-      delete downloadsRef.current[id];
+      setDownloads((items) => {
+        const item = items.find((entry) => entry.id === id);
+        if (item?.status !== 'paused') delete downloadsRef.current[id];
+        return items;
+      });
     }
   }, [lang.downloadDone, lang.downloadFailed, lang.downloadStarted, lang.hlsNotice, notifyDownload]);
+
+  const pauseDownload = useCallback(async (id: string) => {
+    const task = downloadsRef.current[id];
+    if (!task) return;
+    try {
+      const snapshot = await task.pauseAsync();
+      setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'paused', resumeData: JSON.stringify(snapshot) } : item));
+      setNotice(lang.downloadPaused);
+    } catch {
+      setNotice(lang.downloadFailed);
+    }
+  }, [lang.downloadFailed, lang.downloadPaused]);
+
+  const resumeDownload = useCallback(async (id: string) => {
+    const task = downloadsRef.current[id];
+    if (!task) return;
+    setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'downloading' } : item));
+    setNotice(lang.downloadResumed);
+    try {
+      const result = await task.resumeAsync();
+      if (!result?.uri) return;
+      setDownloads((items) => items.map((item) => item.id === id ? { ...item, progress: 100, status: 'done', localUri: result.uri, resumeData: undefined } : item));
+      const name = downloads.find((item) => item.id === id)?.name ?? 'video';
+      await notifyDownload(lang.downloadDone, name);
+      delete downloadsRef.current[id];
+    } catch {
+      setDownloads((items) => items.map((item) => item.id === id ? { ...item, status: 'failed', error: lang.downloadFailed } : item));
+      setNotice(lang.downloadFailed);
+    }
+  }, [downloads, lang.downloadDone, lang.downloadFailed, lang.downloadResumed, notifyDownload]);
 
   const onWebMessage = useCallback((event: WebViewMessageEvent, tabId: string) => {
     if (tabId !== activeTabId) return;
@@ -1187,7 +1233,7 @@ export default function MiniWaveBrowser() {
             <ScrollView contentContainerStyle={styles.sheetList}>
               {libraryTab === 'history' && (history.length ? history.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="time-outline" size={21} color={displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View></Pressable>) : <Empty label={lang.noHistory} colors={displayColors} />)}
               {libraryTab === 'bookmarks' && (bookmarks.length ? bookmarks.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="star" size={21} color={displayColors.accent} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View><IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setBookmarks((current) => current.filter((entry) => entry.id !== item.id))} /></Pressable>) : <Empty label={lang.noBookmarks} colors={displayColors} />)}
-              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{item.status === 'downloading' && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'done' && <IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} />}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setDownloads((current) => current.filter((entry) => entry.id !== item.id))} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
+              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{(item.status === 'downloading' || item.status === 'paused') && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'downloading' && <IconButton name="pause-circle-outline" label={lang.downloadPaused} color={displayColors.primary} onPress={() => void pauseDownload(item.id)} />}{item.status === 'paused' && <IconButton name="play-circle-outline" label={lang.downloadResumed} color={displayColors.primary} onPress={() => void resumeDownload(item.id)} />}{item.status === 'done' && <IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} />}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setDownloads((current) => current.filter((entry) => entry.id !== item.id))} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
             </ScrollView>
           </View>
         </View>
