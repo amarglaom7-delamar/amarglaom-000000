@@ -858,7 +858,21 @@ export default function MiniWaveBrowser() {
         title?: string;
         sources?: MediaCandidate[];
         html?: string;
+        text?: string;
       };
+      if (message.type === 'subtitle' && message.text) {
+        void (async () => {
+          try {
+            const endpoint = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ar&dt=t&q=' + encodeURIComponent(message.text);
+            const response = await fetch(endpoint);
+            const data = await response.json();
+            const translated = Array.isArray(data) && Array.isArray(data[0]) ? data[0].map((part: any) => Array.isArray(part) ? part[0] : '').join('') : '';
+            if (!translated) return;
+            const safe = JSON.stringify(translated).replace(/</g, '\\u003c');
+            webRefs.current[tabId]?.injectJavaScript("(function(){var e=document.createEvent('CustomEvent');e.initCustomEvent('miniwave-subtitle-translation',false,false,{text:"+safe+"});document.dispatchEvent(e);true;})();");
+          } catch {}
+        })();
+      }
       if (message.type === 'pageSnapshot' && message.html) void savePageSnapshot(message.html,message.title||activeTab?.title||'Saved page',message.url||activeTab?.url||'');
       if (message.type === 'download' && message.url) void startDownload(message.url, message.title);
       if (message.type === 'share' && message.url) {
@@ -893,6 +907,33 @@ export default function MiniWaveBrowser() {
       var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
       (function(){var bad=/popup|popunder|doubleclick|googlesyndication|adservice|adnxs|exoclick|onclickads|propellerads|trafficjunky/i;var ow=window.open;window.open=function(u){try{if(u&&bad.test(String(u)))return null;}catch(e){}return null;};document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a'):null;if(a&&a.target==='_blank'&&a.href&&bad.test(a.href)){e.preventDefault();e.stopPropagation();}},true);})();
       var n=${nightMode?'true':'false'},x=${textOnly?'true':'false'};function pm(){var s=document.getElementById('miniwave-page-mode');if(!s){s=document.createElement('style');s.id='miniwave-page-mode';document.documentElement.appendChild(s)}s.textContent=(window.__n?'html,body{background:#111!important;color:#eee!important}a{color:#8ab4f8!important}input,textarea,select,button{background:#222!important;color:#eee!important;border-color:#555!important}img,video{filter:brightness(.82)}':'')+(window.__x?'video,audio,img,picture,iframe,canvas,svg,object,embed{display:none!important}':'')}window.__n=n;window.__x=x;pm();document.addEventListener('miniwave-page-mode',function(e){var d=e.detail||{};window.__n=!!d.night;window.__x=!!d.textOnly;pm()});
+      var subtitleEnabled = false;
+      var subtitleOverlay = document.createElement('div');
+      subtitleOverlay.setAttribute('data-miniwave-subtitle-overlay','1');
+      subtitleOverlay.style.cssText = 'position:absolute;left:5%;right:5%;bottom:52px;z-index:20;text-align:center;color:#fff;font:bold 17px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;text-shadow:0 2px 4px #000,0 0 8px #000;background:rgba(0,0,0,.18);padding:4px 8px;border-radius:6px;pointer-events:none;display:none;';
+      document.documentElement.appendChild(subtitleOverlay);
+      function setTranslatedSubtitle(text){ subtitleOverlay.textContent=text||''; subtitleOverlay.style.display=text?'block':'none'; }
+      document.addEventListener('miniwave-subtitle-translation',function(e){var d=e.detail||{};setTranslatedSubtitle(d.text||'');});
+      function subtitleCue(){
+        if(!subtitleEnabled) return;
+        var videos=document.querySelectorAll('video');
+        for(var i=0;i<videos.length;i++){
+          var tracks=videos[i].textTracks;
+          for(var j=0;j<tracks.length;j++){
+            var track=tracks[j];
+            if(!track||!track.cues) continue;
+            if(track.kind==='subtitles'||track.kind==='captions'){
+              try{track.mode='hidden';}catch(e){}
+              var cues=track.activeCues;
+              if(cues&&cues.length){
+                var text=Array.prototype.map.call(cues,function(c){return (c.text||'').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();}).filter(Boolean).join(' ');
+                if(text && text!==window.__miniwaveLastSubtitle){window.__miniwaveLastSubtitle=text;send('subtitle',{text:text});}
+                return;
+              }
+            }
+          }
+        }
+      }
       var script = document.createElement('style');
       script.innerHTML = dataSaver ? 'img:not([data-miniwave-loaded]), picture, iframe[src*="ads"] { opacity: .88; }' : '';
       document.documentElement.appendChild(script);
@@ -1027,6 +1068,7 @@ export default function MiniWaveBrowser() {
         var downloadButton = controlButton('Download', '↓');
         var backButton = controlButton('Back', '‹');
         var fullscreenButton = controlButton('Fullscreen', '⛶');
+        var translateButton = controlButton('Arabic subtitles', 'ع');
         shell.appendChild(progress);
         shell.appendChild(controls);
 
@@ -1083,6 +1125,7 @@ export default function MiniWaveBrowser() {
         backButton.addEventListener('click', function() {
           send('back');
         }, true);
+        translateButton.addEventListener('click', function() { subtitleEnabled=!subtitleEnabled; translateButton.style.opacity=subtitleEnabled?'1':'.45'; if(!subtitleEnabled){window.__miniwaveLastSubtitle='';setTranslatedSubtitle('');} else subtitleCue(); showControls(); }, true);
         fullscreenButton.addEventListener('click', function() {
           try {
             if (document.fullscreenElement) {
@@ -1116,6 +1159,7 @@ export default function MiniWaveBrowser() {
         mediaElement.addEventListener('pause', function() { setControlsVisible(true); }, true);
         mediaElement.addEventListener('ended', function() { setControlsVisible(true); }, true);
         updateProgress();
+        setInterval(subtitleCue, 450);
       }
       function media() {
         var videos = Array.prototype.slice.call(document.querySelectorAll('video, audio'));
