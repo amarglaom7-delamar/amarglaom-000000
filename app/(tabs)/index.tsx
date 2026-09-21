@@ -1459,7 +1459,7 @@ export default function MiniWaveBrowser() {
         )}
       </View>
 
-      {internalPlayer && internalPlayerFrame ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={{ top: 0, bottom: 0 }} language={settings.language} frameStyle={{ left: internalPlayerFrame.left, top: internalPlayerFrame.top, width: internalPlayerFrame.width, height: internalPlayerFrame.height }} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setInternalPlayerFrame(null); }} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
+      {internalPlayer && internalPlayerFrame ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={{ top: 0, bottom: 0 }} language={settings.language} frameStyle={{ left: 0, top: 0, width: '100%', height: '100%' }} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setInternalPlayerFrame(null); }} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
 
       <View style={[styles.toolbar, { backgroundColor: displayColors.card, borderTopColor: displayColors.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <IconButton name="arrow-back" label={rtl ? 'السابق' : 'Back'} color={activeTab?.canGoBack ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goBack()} disabled={!activeTab?.canGoBack} />
