@@ -1426,8 +1426,6 @@ export default function MiniWaveBrowser() {
           return true;
         }}
         injectedJavaScript={injectedJavaScript}
-        javaScriptEnabled
-        domStorageEnabled
         allowsFullscreenVideo
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
