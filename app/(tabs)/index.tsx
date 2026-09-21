@@ -3,6 +3,7 @@ import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Brightness from 'expo-brightness';
 import * as Notifications from 'expo-notifications';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
@@ -369,9 +370,28 @@ function InternalVideoPlayer({
   const [progressWidth, setProgressWidth] = useState(0);
   const [muted, setMuted] = useState(false);
   const lastTapRef = useRef({ time: 0, x: 0 });
+  const brightnessStartRef = useRef(0.5);
+  const volumeStartRef = useRef(1);
+  const gestureOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [gestureOverlay, setGestureOverlay] = useState<{ type: 'brightness' | 'volume'; value: number } | null>(null);
   const duration = Number.isFinite(player.duration) ? player.duration : 0;
   const sourceChoices = sources.length > 1 ? sources : [];
   const title = candidate.label || 'Video';
+
+  useEffect(() => {
+    void Brightness.getBrightnessAsync().then((value) => {
+      if (Number.isFinite(value)) brightnessStartRef.current = value;
+    }).catch(() => undefined);
+    return () => {
+      if (gestureOverlayTimerRef.current) clearTimeout(gestureOverlayTimerRef.current);
+    };
+  }, []);
+
+  const showGestureOverlay = (type: 'brightness' | 'volume', value: number) => {
+    setGestureOverlay({ type, value });
+    if (gestureOverlayTimerRef.current) clearTimeout(gestureOverlayTimerRef.current);
+    gestureOverlayTimerRef.current = setTimeout(() => setGestureOverlay(null), 700);
+  };
 
   useEffect(() => {
     if (!isPlaying) {
@@ -419,6 +439,43 @@ function InternalVideoPlayer({
     setSpeed(next);
     player.playbackRate = next;
   };
+  const [videoAreaWidth, setVideoAreaWidth] = useState(0);
+  const videoGestureResponder = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gestureState) => {
+      const vertical = Math.abs(gestureState.dy);
+      const horizontal = Math.abs(gestureState.dx);
+      return vertical > 12 && vertical > horizontal * 1.15;
+    },
+    onPanResponderGrant: (event) => {
+      const x = Number(event.nativeEvent.locationX || 0);
+      if (videoAreaWidth > 0 && x > videoAreaWidth / 2) {
+        volumeStartRef.current = Math.max(0, Math.min(1, player.volume));
+      } else {
+        void Brightness.getBrightnessAsync().then((value) => {
+          if (Number.isFinite(value)) brightnessStartRef.current = value;
+        }).catch(() => undefined);
+      }
+    },
+    onPanResponderMove: (event, gestureState) => {
+      const x = Number(event.nativeEvent.locationX || 0);
+      const ratio = videoAreaWidth > 0 ? x / videoAreaWidth : 0.5;
+      const delta = Math.max(-0.9, Math.min(0.9, -gestureState.dy / 260));
+      if (ratio <= 0.5) {
+        const next = Math.max(0, Math.min(1, brightnessStartRef.current + delta));
+        void Brightness.setBrightnessAsync(next).catch(() => undefined);
+        showGestureOverlay('brightness', next);
+      } else {
+        const next = Math.max(0, Math.min(1, volumeStartRef.current + delta));
+        player.volume = next;
+        if (next > 0 && player.muted) player.muted = false;
+        showGestureOverlay('volume', next);
+      }
+      setShowControls(true);
+    },
+    onPanResponderRelease: () => setGestureOverlay(null),
+    onPanResponderTerminate: () => setGestureOverlay(null),
+  })).current;
+
   const seekFromProgress = (event: any) => {
     if (!duration || !progressWidth) return;
     const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / progressWidth));
@@ -436,10 +493,11 @@ function InternalVideoPlayer({
   return (
     <View style={[styles.internalPlayerScreen, styles.internalPlayerInline, frameStyle]}>
       <StatusBar style="light" hidden={false} />
-        <Pressable style={styles.internalPlayerVideoArea} onPress={handlePlayerTap} onLongPress={handleLongPress} onPressOut={releaseLongPress}>
+        <Pressable style={styles.internalPlayerVideoArea} onPress={handlePlayerTap} onLongPress={handleLongPress} onPressOut={releaseLongPress} onLayout={(event) => setVideoAreaWidth(event.nativeEvent.layout.width)} {...videoGestureResponder.panHandlers}>
           <VideoView ref={videoViewRef} player={player} style={styles.internalPlayerVideo} nativeControls={false} contentFit="contain" allowsFullscreen allowsPictureInPicture />
           {status === 'loading' ? <View style={styles.internalPlayerLoading}><ActivityIndicator size="large" color="#ffffff" /></View> : null}
           {status === 'error' ? <View style={styles.internalPlayerError}><Ionicons name="alert-circle-outline" size={46} color="#ffffff" /><Text style={styles.internalPlayerErrorText}>{language === 'ar' ? 'تعذر تشغيل هذا الفيديو داخل المشغل' : 'This video could not be played in the internal player'}</Text></View> : null}
+          {gestureOverlay ? <View pointerEvents="none" style={styles.gestureOverlay}><Ionicons name={gestureOverlay.type === 'brightness' ? 'sunny-outline' : 'volume-high-outline'} size={28} color="#ffffff" /><Text style={styles.gestureOverlayText}>{Math.round(gestureOverlay.value * 100)}%</Text><View style={styles.gestureMeter}><View style={[styles.gestureMeterFill, { width: `${gestureOverlay.value * 100}%` }]} /></View></View> : null}
           {showControls ? (
             <View pointerEvents="box-none" style={[styles.internalPlayerOverlay, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
               <View style={styles.internalPlayerTopBar}>
@@ -1668,6 +1726,10 @@ const styles = StyleSheet.create({
   internalPlayerTime: { flex: 1, color: '#ffffff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   internalPlayerSpeed: { minWidth: 40, height: 30, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,.45)', alignItems: 'center', justifyContent: 'center' },
   internalPlayerSpeedText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
+  gestureOverlay: { position: 'absolute', alignSelf: 'center', top: '42%', width: 170, padding: 14, borderRadius: 16, backgroundColor: 'rgba(0,0,0,.68)', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  gestureOverlayText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  gestureMeter: { width: 130, height: 4, borderRadius: 4, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,.25)' },
+  gestureMeterFill: { height: '100%', backgroundColor: '#ffffff' },
   internalPlayerSources: { gap: 7, paddingVertical: 5 },
   internalPlayerSourceChip: { borderWidth: 1, borderColor: 'rgba(255,255,255,.35)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   internalPlayerSourceChipActive: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
