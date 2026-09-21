@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   ActivityIndicator,
+  Dimensions,
   BackHandler,
   Keyboard,
   Modal,
@@ -942,14 +943,18 @@ export default function MiniWaveBrowser() {
         const unique = sources.filter((item, index, all) => all.findIndex((candidate) => candidate.url === item.url) === index).slice(0, 8);
         setMediaTabId(tabId);
         setMediaCandidates(unique);
-        if (message.type === 'openPlayer' && unique[0] && message.rect) {
+        if (message.type === 'openPlayer' && unique[0]) {
+          // Always open the internal player at a large, usable size.
+          // Using the video's original DOM rectangle made small videos appear
+          // as tiny floating frames on Android.
+          const windowSize = Dimensions.get('window');
           setInternalPlayer(unique[0]);
           setInternalPlayerSources(unique);
           setInternalPlayerFrame({
-            left: Math.max(0, Number(message.rect.left) || 0),
-            top: Math.max(0, Number(message.rect.top) || 0),
-            width: Math.max(120, Number(message.rect.width) || 0),
-            height: Math.max(90, Number(message.rect.height) || 0),
+            left: 0,
+            top: 0,
+            width: Math.max(320, windowSize.width),
+            height: Math.max(240, windowSize.height),
           });
         }
       }
