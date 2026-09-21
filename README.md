@@ -29,3 +29,5 @@ pnpm exec expo export --platform android
 - التنزيلات والمفضلة والسجل تحفظ محليًا داخل التطبيق.
 - لا يوجد اتصال بخادم خارجي مطلوب لتشغيل واجهة المتصفح.
 <!-- Android release build trigger -->
+
+<!-- Crash fix build -->
