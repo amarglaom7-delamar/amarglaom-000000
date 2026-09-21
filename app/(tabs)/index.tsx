@@ -693,7 +693,7 @@ export default function MiniWaveBrowser() {
     }
   }, [settings.notifications]);
 
-  const startDownload = useCallback(async (url: string, suggestedName?: string) => {
+  const startDownload = useCallback(async (url: string, suggestedName?: string, pageUrl?: string) => {
     if (!url || !/^https?:\/\//i.test(url)) {
       setNotice(lang.drmNotice);
       return;
@@ -717,7 +717,9 @@ export default function MiniWaveBrowser() {
       const resumable = FileSystem.createDownloadResumable(
         url,
         target,
-        {},
+        {
+          headers: pageUrl ? { Referer: pageUrl } : undefined,
+        },
         (progress) => {
           const ratio = progress.totalBytesExpectedToWrite > 0 ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite : 0;
           setDownloads((current) => current.map((item) => item.id === id ? { ...item, progress: Math.min(99, Math.round(ratio * 100)) } : item));
@@ -734,7 +736,8 @@ export default function MiniWaveBrowser() {
         throw new Error('The video file was not saved');
       }
       const contentType = Object.entries(result.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? '';
-      if (result.status >= 400 || /text\/html|application\/json/i.test(contentType)) {
+      const downloadedSize = Number(result.headers?.['content-length'] ?? result.headers?.['Content-Length'] ?? 0);
+      if (result.status >= 400 || /text\/html|application\/json/i.test(contentType) || (downloadedSize === 0 && !/video\//i.test(contentType) && !/\.(mp4|webm|mov|m4v|3gp|mkv)(?:$|\?)/i.test(url))) {
         await FileSystem.deleteAsync(result.uri, { idempotent: true });
         throw new Error('The source returned a web page instead of a video file');
       }
@@ -831,7 +834,7 @@ export default function MiniWaveBrowser() {
           height: Math.max(90, Number(message.rect.height) || 0),
         });
       }
-      if (message.type === 'download' && message.url) void startDownload(message.url, message.title);
+      if (message.type === 'download' && message.url) void startDownload(message.url, message.title, tabs.find((tab) => tab.id === tabId)?.url);
       if (message.type === 'share' && message.url) {
         void Share.share({ message: message.url, title: message.title });
       }
@@ -1474,7 +1477,7 @@ export default function MiniWaveBrowser() {
         )}
       </View>
 
-      {internalPlayer && internalPlayerFrame ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={{ top: 0, bottom: 0 }} language={settings.language} frameStyle={{ left: 0, top: 0, width: '100%', height: '100%' }} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setInternalPlayerFrame(null); }} onDownload={(url, name) => void startDownload(url, name)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
+      {internalPlayer && internalPlayerFrame ? <InternalVideoPlayer candidate={internalPlayer} sources={internalPlayerSources} insets={{ top: 0, bottom: 0 }} language={settings.language} frameStyle={{ left: 0, top: 0, width: '100%', height: '100%' }} onClose={() => { setInternalPlayer(null); setInternalPlayerSources([]); setInternalPlayerFrame(null); }} onDownload={(url, name) => void startDownload(url, name, activeTab?.url)} onShare={() => void Share.share({ message: internalPlayer.url, title: activeTab?.title || 'Video' })} onFavorite={toggleBookmark} /> : null}
 
       <View style={[styles.toolbar, { backgroundColor: displayColors.card, borderTopColor: displayColors.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <IconButton name="arrow-back" label={rtl ? 'السابق' : 'Back'} color={activeTab?.canGoBack ? displayColors.foreground : displayColors.border} onPress={() => activeTab && webRefs.current[activeTab.id]?.goBack()} disabled={!activeTab?.canGoBack} />
