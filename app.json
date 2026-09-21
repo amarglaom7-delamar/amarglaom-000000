@@ -20,7 +20,8 @@
       "package": "com.miniwave.browser",
       "versionCode": 2,
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "WRITE_SETTINGS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
@@ -59,7 +60,8 @@
           "supportsPictureInPicture": true,
           "supportsBackgroundPlayback": true
         }
-      ]
+      ],
+      "expo-brightness"
     ],
     "experiments": {
       "typedRoutes": true,
