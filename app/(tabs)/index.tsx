@@ -372,6 +372,7 @@ function InternalVideoPlayer({
   const [muted, setMuted] = useState(false);
   const lastTapRef = useRef({ time: 0, x: 0 });
   const brightnessStartRef = useRef(0.5);
+  const originalBrightnessRef = useRef(0.5);
   const volumeStartRef = useRef(1);
   const gestureOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [gestureOverlay, setGestureOverlay] = useState<{ type: 'brightness' | 'volume'; value: number } | null>(null);
@@ -381,10 +382,14 @@ function InternalVideoPlayer({
 
   useEffect(() => {
     void Brightness.getBrightnessAsync().then((value) => {
-      if (Number.isFinite(value)) brightnessStartRef.current = value;
+      if (Number.isFinite(value)) {
+        brightnessStartRef.current = value;
+        originalBrightnessRef.current = value;
+      }
     }).catch(() => undefined);
     return () => {
       if (gestureOverlayTimerRef.current) clearTimeout(gestureOverlayTimerRef.current);
+      void Brightness.setBrightnessAsync(originalBrightnessRef.current).catch(() => undefined);
     };
   }, []);
 
@@ -410,8 +415,7 @@ function InternalVideoPlayer({
     const x = Number(event.nativeEvent.locationX || 0);
     const previous = lastTapRef.current;
     if (now - previous.time < 280) {
-      const delta = x - previous.x;
-      player.seekBy(delta < 0 ? -10 : 10);
+      player.playing ? player.pause() : player.play();
       setShowControls(true);
       lastTapRef.current = { time: 0, x: 0 };
       return;
