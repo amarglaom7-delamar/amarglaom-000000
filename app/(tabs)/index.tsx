@@ -851,6 +851,10 @@ export default function MiniWaveBrowser() {
                 setNotice('يجب السماح بالميكروفون لتشغيل التقاط صوت الفيديو.');
                 return;
               }
+              if (!audioTranslationModule?.start) {
+                setNotice('الترجمة الصوتية غير متاحة في هذه النسخة.');
+                return;
+              }
               await audioTranslationModule.start();
             } catch (error) {
               setNotice(error instanceof Error ? error.message : 'تعذر بدء الترجمة الصوتية.');
@@ -859,7 +863,7 @@ export default function MiniWaveBrowser() {
         }
       }
       if (message.type === 'voiceTranslateStop') {
-        try { audioTranslationModule.stop(); } catch {}
+        try { audioTranslationModule?.stop?.(); } catch {}
       }
       if (message.type === 'media' || message.type === 'openPlayer') {
         const sources = (message.sources ?? [])
