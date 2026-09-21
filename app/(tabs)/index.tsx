@@ -88,6 +88,7 @@ const STORAGE = {
   bookmarks: '@miniwave/bookmarks',
   downloads: '@miniwave/downloads',
   settings: '@miniwave/settings',
+  session: '@miniwave/session',
 };
 
 const defaultSettings: Settings = {
@@ -547,6 +548,7 @@ export default function MiniWaveBrowser() {
   const [tabs, setTabs] = useState<BrowserTab[]>([
     { id: makeId('tab'), url: HOME_URL, title: 'Google', private: false, canGoBack: false, canGoForward: false, loading: true },
   ]);
+  const [sessionRestored, setSessionRestored] = useState(false);
   const [activeTabId, setActiveTabId] = useState('');
   const [address, setAddress] = useState(HOME_URL);
   const [editingAddress, setEditingAddress] = useState(false);
@@ -591,19 +593,37 @@ export default function MiniWaveBrowser() {
       AsyncStorage.getItem(STORAGE.bookmarks),
       AsyncStorage.getItem(STORAGE.downloads),
       AsyncStorage.getItem(STORAGE.settings),
-    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSettings]) => {
+      AsyncStorage.getItem(STORAGE.session),
+    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSettings, storedSession]) => {
       try {
         if (storedHistory) setHistory(JSON.parse(storedHistory) as HistoryEntry[]);
         if (storedBookmarks) setBookmarks(JSON.parse(storedBookmarks) as Bookmark[]);
         if (storedDownloads) setDownloads(JSON.parse(storedDownloads) as DownloadEntry[]);
         if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>), blockTrackers: true });
+        if (storedSession) {
+          const saved = JSON.parse(storedSession) as { url?: string; title?: string; private?: boolean };
+          if (saved.url && /^https?:\\/\\//i.test(saved.url) && saved.private !== true) {
+            const restoredId = makeId('tab');
+            setTabs([{ id: restoredId, url: saved.url, title: saved.title || saved.url, private: false, canGoBack: false, canGoForward: false, loading: true }]);
+            setActiveTabId(restoredId);
+            setAddress(saved.url);
+          }
+        }
       } catch {
         setNotice(lang.offline);
       } finally {
+        setSessionRestored(true);
         setHydrated(true);
       }
     });
   }, [lang.offline]);
+
+  useEffect(() => {
+    if (!hydrated || !sessionRestored) return;
+    const current = tabs.find((tab) => tab.id === activeTabId);
+    if (!current || current.private || !/^https?:\/\//i.test(current.url)) return;
+    void AsyncStorage.setItem(STORAGE.session, JSON.stringify({ url: current.url, title: current.title }));
+  }, [activeTabId, hydrated, sessionRestored, tabs]);
 
   useEffect(() => {
     if (!hydrated) return;
