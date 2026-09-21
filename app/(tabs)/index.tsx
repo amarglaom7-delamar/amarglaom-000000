@@ -456,6 +456,7 @@ function InternalVideoPlayer({
       if (videoAreaWidth > 0 && x > videoAreaWidth / 2) {
         volumeStartRef.current = Math.max(0, Math.min(1, player.volume));
       } else {
+        void Brightness.requestPermissionsAsync().catch(() => undefined);
         void Brightness.getBrightnessAsync().then((value) => {
           if (Number.isFinite(value)) brightnessStartRef.current = value;
         }).catch(() => undefined);
