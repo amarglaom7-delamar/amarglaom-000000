@@ -995,6 +995,7 @@ export default function MiniWaveBrowser() {
       var __miniwaveInternalVideo = null;
       var dataSaver = ${settings.dataSaver ? 'true' : 'false'};
       var adBlockEnabled = ${settings.blockTrackers ? 'true' : 'false'};
+      var lowDataMode = ${settings.dataSaver ? 'true' : 'false'};\n      if (lowDataMode) {\n        try {\n          var lowDataStyle = document.createElement('style');\n          lowDataStyle.id = 'miniwave-low-data';\n          lowDataStyle.textContent = 'img[loading="lazy"], iframe { }';\n          (document.head || document.documentElement).appendChild(lowDataStyle);\n        } catch(e) {}\n      }
       var adUrlPatterns = [
         /(^|[._\\/-])(ads?|adserver|advert|advertising|banner|doubleclick|googlesyndication|googleadservices)([._/?\\-]|$)/i,
         /(^|[._\\/-])(tracking|tracker|analytics|telemetry|pixel|beacon)([._/?\\-]|$)/i,
@@ -1405,7 +1406,9 @@ export default function MiniWaveBrowser() {
         source={{ uri: tab.url }}
         incognito={tab.private}
         cacheEnabled
-        cacheMode="LOAD_DEFAULT"
+        cacheMode={settings.dataSaver ? "LOAD_CACHE_ELSE_NETWORK" : "LOAD_DEFAULT"}
+        domStorageEnabled
+        javaScriptEnabled
         onLoadProgress={(event) => tab.id === activeTabId && setWebProgress(event.nativeEvent.progress)}
         onLoadStart={() => { if (tab.id === activeTabId) setError(''); setTab(tab.id, { loading: true }); }}
         onLoadEnd={() => setTab(tab.id, { loading: false })}
