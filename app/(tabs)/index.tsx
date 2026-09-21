@@ -14,6 +14,7 @@ import {
   BackHandler,
   Keyboard,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
