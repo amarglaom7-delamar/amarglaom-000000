@@ -1,4 +1,4 @@
-import { EventEmitter, requireNativeModule } from 'expo-modules-core';
+import { EventEmitter, requireOptionalNativeModule } from 'expo-modules-core';
 
 type SpeechResultEvent = {
   text?: string;
@@ -10,9 +10,21 @@ type TranslationStateEvent = {
   message?: string;
 };
 
-const AudioTranslationModule = requireNativeModule('MiniWaveAudioTranslation');
+const AudioTranslationModule = requireOptionalNativeModule<any>('MiniWaveAudioTranslation');
 
-export const audioTranslationEvents = new EventEmitter(AudioTranslationModule);
-export default AudioTranslationModule;
+const fallbackEvents = {
+  addListener: () => ({ remove() {} }),
+};
+
+export const audioTranslationEvents = AudioTranslationModule
+  ? new EventEmitter(AudioTranslationModule)
+  : fallbackEvents;
+
+const fallbackModule = {
+  start: async () => {},
+  stop: () => {},
+};
+
+export default AudioTranslationModule ?? fallbackModule;
 
 export type { SpeechResultEvent, TranslationStateEvent };
