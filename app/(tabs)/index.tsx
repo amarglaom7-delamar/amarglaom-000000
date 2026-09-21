@@ -25,6 +25,7 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView, { WebViewMessageEvent, WebViewNavigation } from 'react-native-webview';
 import { useColors } from '@/hooks/useColors';
@@ -414,7 +415,7 @@ function InternalVideoPlayer({
     player.muted = next;
   };
   const changeSpeed = () => {
-    const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
+    const next = speed === 0.5 ? 1 : speed === 1 ? 1.5 : speed === 1.5 ? 2 : 0.5;
     setSpeed(next);
     player.playbackRate = next;
   };
@@ -500,6 +501,7 @@ export default function MiniWaveBrowser() {
   const [internalPlayerFrame, setInternalPlayerFrame] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [blockedCount, setBlockedCount] = useState(0);
   const [webProgress, setWebProgress] = useState(0);
   const [webKeys, setWebKeys] = useState<Record<string, number>>({});
   const webRefs = useRef<Record<string, WebView | null>>({});
@@ -1329,6 +1331,9 @@ export default function MiniWaveBrowser() {
       <WebView
         ref={(ref) => { webRefs.current[tab.id] = ref; }}
         source={{ uri: tab.url }}
+        incognito={tab.private}
+        cacheEnabled
+        cacheMode="LOAD_DEFAULT"
         onLoadProgress={(event) => tab.id === activeTabId && setWebProgress(event.nativeEvent.progress)}
         onLoadStart={() => { if (tab.id === activeTabId) setError(''); setTab(tab.id, { loading: true }); }}
         onLoadEnd={() => setTab(tab.id, { loading: false })}
@@ -1370,6 +1375,11 @@ export default function MiniWaveBrowser() {
     await Share.share({ message: activeTab.url, title: activeTab.title });
   };
 
+  const openDownload = async (item: DownloadEntry) => {
+    if (!item.localUri) return;
+    try { await Linking.openURL(item.localUri); } catch { setNotice(lang.downloadFailed); }
+  };
+
   const shareDownload = async (item: DownloadEntry) => {
     if (!item.localUri || !(await Sharing.isAvailableAsync())) return;
     await Sharing.shareAsync(item.localUri);
@@ -1382,6 +1392,11 @@ export default function MiniWaveBrowser() {
     }
     const result = await Notifications.requestPermissionsAsync();
     setSettings((current) => ({ ...current, notifications: value && result.granted }));
+  };
+
+  const deleteDownload = async (item: DownloadEntry) => {
+    if (item.localUri) { try { await FileSystem.deleteAsync(item.localUri, { idempotent: true }); } catch {} }
+    setDownloads((current) => current.filter((entry) => entry.id !== item.id));
   };
 
   const resetData = () => {
@@ -1504,7 +1519,7 @@ export default function MiniWaveBrowser() {
             <ScrollView contentContainerStyle={styles.sheetList}>
               {libraryTab === 'history' && (history.length ? history.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="time-outline" size={21} color={displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View></Pressable>) : <Empty label={lang.noHistory} colors={displayColors} />)}
               {libraryTab === 'bookmarks' && (bookmarks.length ? bookmarks.map((item) => <Pressable key={item.id} onPress={() => openLibraryItem(item.url)} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name="star" size={21} color={displayColors.accent} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.title}</Text><Text numberOfLines={1} style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.url}</Text></View><IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setBookmarks((current) => current.filter((entry) => entry.id !== item.id))} /></Pressable>) : <Empty label={lang.noBookmarks} colors={displayColors} />)}
-              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{(item.status === 'downloading' || item.status === 'paused') && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'downloading' && <IconButton name="pause-circle-outline" label={lang.downloadPaused} color={displayColors.primary} onPress={() => void pauseDownload(item.id)} />}{item.status === 'paused' && <IconButton name="play-circle-outline" label={lang.downloadResumed} color={displayColors.primary} onPress={() => void resumeDownload(item.id)} />}{item.status === 'done' && <IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} />}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => setDownloads((current) => current.filter((entry) => entry.id !== item.id))} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
+              {libraryTab === 'downloads' && (downloads.length ? downloads.map((item) => <View key={item.id} style={[styles.libraryCard, { backgroundColor: displayColors.card, borderColor: displayColors.border, flexDirection: rowDirection }]}><Ionicons name={item.status === 'done' ? 'checkmark-circle' : item.status === 'failed' ? 'alert-circle' : 'download-outline'} size={21} color={item.status === 'failed' ? displayColors.destructive : displayColors.primary} /><View style={styles.tabCardCopy}><Text numberOfLines={1} style={[styles.tabCardTitle, { color: displayColors.foreground, textAlign }]}>{item.name}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{item.status === 'done' ? `${lang.downloadDone} · 100%` : item.status === 'failed' ? lang.downloadFailed : `${item.progress}%`}</Text>{(item.status === 'downloading' || item.status === 'paused') && <View style={[styles.progressTrack, { backgroundColor: displayColors.secondary }]}><View style={[styles.progressFill, { width: `${item.progress}%`, backgroundColor: displayColors.primary }]} /></View>}</View>{item.status === 'downloading' && <IconButton name="pause-circle-outline" label={lang.downloadPaused} color={displayColors.primary} onPress={() => void pauseDownload(item.id)} />}{item.status === 'paused' && <IconButton name="play-circle-outline" label={lang.downloadResumed} color={displayColors.primary} onPress={() => void resumeDownload(item.id)} />}{item.status === 'done' && <IconButton name="open-outline" label={lang.open} color={displayColors.primary} onPress={() => void openDownload(item)} /><IconButton name="share-outline" label={lang.share} color={displayColors.primary} onPress={() => void shareDownload(item)} />}<IconButton name="trash-outline" label={lang.delete} color={displayColors.mutedForeground} onPress={() => void deleteDownload(item)} /></View>) : <Empty label={lang.noDownloads} colors={displayColors} />)}
             </ScrollView>
           </View>
         </View>
@@ -1521,7 +1536,7 @@ export default function MiniWaveBrowser() {
                <SettingRow icon="search-outline" title={lang.searchEngine} detail={getSearchEngineLabel(settings.searchEngine)} colors={displayColors} trailing={<View style={[styles.modeRow, { flexDirection: rowDirection }]}>{SEARCH_ENGINE_OPTIONS.map((option) => <Pressable key={option.id} onPress={() => setSettings((current) => ({ ...current, searchEngine: option.id }))} style={[styles.modePill, settings.searchEngine === option.id && { backgroundColor: displayColors.primary }]}><Text style={[styles.modeText, { color: settings.searchEngine === option.id ? displayColors.primaryForeground : displayColors.mutedForeground }]}>{option.label}</Text></Pressable>)}</View>} />
               <Text style={[styles.settingSection, { color: displayColors.primary, textAlign }]}>{lang.settings}</Text>
               <SettingRow icon="speedometer-outline" title={lang.dataSaver} detail={lang.dataSaverDetail} colors={displayColors} trailing={<Switch value={settings.dataSaver} onValueChange={(value) => setSettings((current) => ({ ...current, dataSaver: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
-              <SettingRow icon="shield-checkmark-outline" title={lang.adBlock} detail={lang.adBlockDetail} colors={displayColors} trailing={<Switch value={settings.blockTrackers} onValueChange={(value) => setSettings((current) => ({ ...current, blockTrackers: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
+              <SettingRow icon="shield-checkmark-outline" title={lang.adBlock} detail={`${lang.adBlockDetail}${blockedCount ? ` · ${blockedCount}` : ''}`} colors={displayColors} trailing={<Switch value={settings.blockTrackers} onValueChange={(value) => setSettings((current) => ({ ...current, blockTrackers: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <SettingRow icon="notifications-outline" title={lang.notification} detail={lang.notificationDetail} colors={displayColors} trailing={<Switch value={settings.notifications} onValueChange={(value) => void requestNotifications(value)} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <SettingRow icon="eye-off-outline" title={lang.privateDefault} detail={lang.privateDetail} colors={displayColors} trailing={<Switch value={settings.privateDefault} onValueChange={(value) => setSettings((current) => ({ ...current, privateDefault: value }))} trackColor={{ false: displayColors.secondary, true: displayColors.primary }} thumbColor={displayColors.card} />} />
               <Pressable onPress={resetData} style={[styles.resetRow, { borderColor: displayColors.border, backgroundColor: displayColors.card, flexDirection: rowDirection }]}><Ionicons name="trash-bin-outline" size={22} color={displayColors.destructive} /><View style={styles.tabCardCopy}><Text style={[styles.tabCardTitle, { color: displayColors.destructive, textAlign }]}>{lang.reset}</Text><Text style={[styles.tabCardUrl, { color: displayColors.mutedForeground, textAlign }]}>{lang.resetDetail}</Text></View></Pressable>
