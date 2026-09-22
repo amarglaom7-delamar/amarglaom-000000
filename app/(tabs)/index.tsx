@@ -600,62 +600,21 @@ export default function MiniWaveBrowser() {
         if (storedBookmarks) setBookmarks(JSON.parse(storedBookmarks) as Bookmark[]);
         if (storedDownloads) setDownloads(JSON.parse(storedDownloads) as DownloadEntry[]);
         if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>), blockTrackers: true });
+
         if (storedSession) {
-          const saved = JSON.parse(storedSession) as { tabs?: BrowserTab[]; activeTabId?: string; address?: string };
-          const savedTabs = Array.isArray(saved.tabs)
+          const saved = JSON.parse(storedSession) as { tabs?: BrowserTab[]; activeTabId?: string; address?: string; url?: string; title?: string; private?: boolean };
+          let savedTabs = Array.isArray(saved.tabs)
             ? saved.tabs.filter((tab) => tab && !tab.private && typeof tab.url === 'string' && /^https?:\/\//i.test(tab.url))
             : [];
+          // Migrate the older single-page session format.
+          if (!savedTabs.length && saved.url && saved.private !== true && /^https?:\/\//i.test(saved.url)) {
+            savedTabs = [{ id: makeId('tab'), url: saved.url, title: saved.title || saved.url, private: false, canGoBack: false, canGoForward: false, loading: true }];
+          }
           if (savedTabs.length) {
             setTabs(savedTabs);
             const nextActive = savedTabs.some((tab) => tab.id === saved.activeTabId) ? saved.activeTabId! : savedTabs[0].id;
             setActiveTabId(nextActive);
             setAddress(saved.address || savedTabs.find((tab) => tab.id === nextActive)?.url || HOME_URL);
-          }
-        }
-      } catch {
-        setNotice(lang.offline);
-      } finally {
-        setHydrated(true);
-      }
-    });
-  }, [lang.offline]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    const safeTabs = tabs.filter((tab) => !tab.private && /^https?:\/\//i.test(tab.url));
-    const active = safeTabs.find((tab) => tab.id === activeTabId) ?? safeTabs[0];
-    void AsyncStorage.setItem(STORAGE.session, JSON.stringify({
-      tabs: safeTabs,
-      activeTabId: active?.id ?? '',
-      address: active?.url ?? HOME_URL,
-      savedAt: Date.now(),
-    }));
-  }, [tabs, activeTabId, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    void Video.setVideoCacheSizeAsync(settings.dataSaver ? 268435456 : 536870912).catch(() => undefined);
-  }, [hydrated, settings.dataSaver]);
-
-  useEffect(() => {
-    void Promise.all([
-      AsyncStorage.getItem(STORAGE.bookmarks),
-      AsyncStorage.getItem(STORAGE.downloads),
-      AsyncStorage.getItem(STORAGE.settings),
-      AsyncStorage.getItem(STORAGE.session),
-    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSettings, storedSession]) => {
-      try {
-        if (storedHistory) setHistory(JSON.parse(storedHistory) as HistoryEntry[]);
-        if (storedBookmarks) setBookmarks(JSON.parse(storedBookmarks) as Bookmark[]);
-        if (storedDownloads) setDownloads(JSON.parse(storedDownloads) as DownloadEntry[]);
-        if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>), blockTrackers: true });
-        if (storedSession) {
-          const saved = JSON.parse(storedSession) as { url?: string; title?: string; private?: boolean };
-          if (saved.url && /^https?:\\/\\//i.test(saved.url) && saved.private !== true) {
-            const restoredId = makeId('tab');
-            setTabs([{ id: restoredId, url: saved.url, title: saved.title || saved.url, private: false, canGoBack: false, canGoForward: false, loading: true }]);
-            setActiveTabId(restoredId);
-            setAddress(saved.url);
           }
         }
       } catch {
@@ -668,13 +627,6 @@ export default function MiniWaveBrowser() {
   }, [lang.offline]);
 
   useEffect(() => {
-    if (!hydrated || !sessionRestored) return;
-    const current = tabs.find((tab) => tab.id === activeTabId);
-    if (!current || current.private || !/^https?:\/\//i.test(current.url)) return;
-    void AsyncStorage.setItem(STORAGE.session, JSON.stringify({ url: current.url, title: current.title }));
-  }, [activeTabId, hydrated, sessionRestored, tabs]);
-
-  useEffect(() => {
     if (!hydrated) return;
     void AsyncStorage.multiSet([
       [STORAGE.history, JSON.stringify(history.slice(0, 100))],
@@ -683,6 +635,23 @@ export default function MiniWaveBrowser() {
       [STORAGE.settings, JSON.stringify(settings)],
     ]);
   }, [bookmarks, downloads, history, hydrated, settings]);
+
+  useEffect(() => {
+    if (!hydrated || !sessionRestored) return;
+    const safeTabs = tabs.filter((tab) => !tab.private && /^https?:\/\//i.test(tab.url));
+    const active = safeTabs.find((tab) => tab.id === activeTabId) ?? safeTabs[0];
+    void AsyncStorage.setItem(STORAGE.session, JSON.stringify({
+      tabs: safeTabs,
+      activeTabId: active?.id ?? '',
+      address: active?.url ?? HOME_URL,
+      savedAt: Date.now(),
+    }));
+  }, [tabs, activeTabId, hydrated, sessionRestored]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void Video.setVideoCacheSizeAsync(settings.dataSaver ? 268435456 : 536870912).catch(() => undefined);
+  }, [hydrated, settings.dataSaver]);
 
   useEffect(() => {
     if (!notice) return;
