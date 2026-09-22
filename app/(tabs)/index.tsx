@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEvent } from 'expo';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { Video, useVideoPlayer, VideoView } from 'expo-video';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Brightness from 'expo-brightness';
@@ -590,6 +590,55 @@ export default function MiniWaveBrowser() {
   useEffect(() => {
     void Promise.all([
       AsyncStorage.getItem(STORAGE.history),
+      AsyncStorage.getItem(STORAGE.bookmarks),
+      AsyncStorage.getItem(STORAGE.downloads),
+      AsyncStorage.getItem(STORAGE.settings),
+      AsyncStorage.getItem(STORAGE.session),
+    ]).then(([storedHistory, storedBookmarks, storedDownloads, storedSettings, storedSession]) => {
+      try {
+        if (storedHistory) setHistory(JSON.parse(storedHistory) as HistoryEntry[]);
+        if (storedBookmarks) setBookmarks(JSON.parse(storedBookmarks) as Bookmark[]);
+        if (storedDownloads) setDownloads(JSON.parse(storedDownloads) as DownloadEntry[]);
+        if (storedSettings) setSettings({ ...defaultSettings, ...(JSON.parse(storedSettings) as Partial<Settings>), blockTrackers: true });
+        if (storedSession) {
+          const saved = JSON.parse(storedSession) as { tabs?: BrowserTab[]; activeTabId?: string; address?: string };
+          const savedTabs = Array.isArray(saved.tabs)
+            ? saved.tabs.filter((tab) => tab && !tab.private && typeof tab.url === 'string' && /^https?:\/\//i.test(tab.url))
+            : [];
+          if (savedTabs.length) {
+            setTabs(savedTabs);
+            const nextActive = savedTabs.some((tab) => tab.id === saved.activeTabId) ? saved.activeTabId! : savedTabs[0].id;
+            setActiveTabId(nextActive);
+            setAddress(saved.address || savedTabs.find((tab) => tab.id === nextActive)?.url || HOME_URL);
+          }
+        }
+      } catch {
+        setNotice(lang.offline);
+      } finally {
+        setHydrated(true);
+      }
+    });
+  }, [lang.offline]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const safeTabs = tabs.filter((tab) => !tab.private && /^https?:\/\//i.test(tab.url));
+    const active = safeTabs.find((tab) => tab.id === activeTabId) ?? safeTabs[0];
+    void AsyncStorage.setItem(STORAGE.session, JSON.stringify({
+      tabs: safeTabs,
+      activeTabId: active?.id ?? '',
+      address: active?.url ?? HOME_URL,
+      savedAt: Date.now(),
+    }));
+  }, [tabs, activeTabId, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void Video.setVideoCacheSizeAsync(settings.dataSaver ? 268435456 : 536870912).catch(() => undefined);
+  }, [hydrated, settings.dataSaver]);
+
+  useEffect(() => {
+    void Promise.all([
       AsyncStorage.getItem(STORAGE.bookmarks),
       AsyncStorage.getItem(STORAGE.downloads),
       AsyncStorage.getItem(STORAGE.settings),
